@@ -20,6 +20,12 @@ class ShellError(Exception):
 
 @dataclass(frozen=True)
 class BoundingBox:
+    """
+    Geographical frame 
+    containing longitudinal 
+    and lateral bounds to a 
+    geographical area
+    """
     LATMIN: Latitude
     LATMAX: Latitude
     LONMIN: Longitude
