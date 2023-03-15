@@ -545,13 +545,13 @@ class SearchAgent:
         and return only messages that fall inside given `cell`-bounds.
         """
         snippets = []
-        spatial_filter = "Lon > {} and Lon < {} and Lat > {} and Lat < {}".format(
+        spatial_filter = "lon > {} and lon < {} and lat > {} and lat < {}".format(
             cell.LONMIN,cell.LONMAX,cell.LATMIN,cell.LATMAX
         )
         with Loader(cell):
             for file in self.datapath:
                 df = pd.read_csv(file,sep=",",usecols=list(range(10)))
-                df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+                df["timestamp"] = pd.to_datetime(df["timestamp"])
                 snippets.append(df.query(spatial_filter))
 
         return pd.concat(snippets)
@@ -597,9 +597,9 @@ class SearchAgent:
         Build a kd-tree object from the `Lat` and `Lon` 
         columns of a pandas dataframe.
         """
-        assert "Lat" in data and "Lon" in data, \
-            "Input dataframe has no `Lat` or `Lon` columns"
-        return cKDTree(data[["Lat","Lon"]])
+        assert "lat" in data and "lon" in data, \
+            "Input dataframe has no `lat` or `lon` columns"
+        return cKDTree(data[["lat","lon"]])
 
     def _get_neighbors(self, tpos: TimePosition):
         """
@@ -632,12 +632,12 @@ class SearchAgent:
         The individual AIS Messages are sorted by date
         and are added to the respective TargetVessel's track attribute.
         """
-        df = df.sort_values(by="Timestamp")
+        df = df.sort_values(by="timestamp")
         targets: dict[int,TargetVessel] = {}
         
         for mmsi,ts,lat,lon,sog,cog in zip(
-            df["MMSI"],df["Timestamp"],df["Lat"],
-            df["Lon"],df["SOG"],df["COG"]):
+            df["MMSI"],df["timestamp"],df["lat"],
+            df["lon"],df["speed"],df["course"]):
             
             if mmsi not in targets:
                 targets[mmsi] = TargetVessel(
@@ -688,9 +688,9 @@ class SearchAgent:
         rows whose `Timestamp` is not more than 
         `delta` minutes apart from imput `date`.
         """
-        assert "Timestamp" in df, "No `Timestamp` column found"
+        assert "timestamp" in df, "No `timestamp` column found"
         dt = timedelta(minutes=delta)
-        mask = (df["Timestamp"] > (date-dt)) & (df["Timestamp"] < (date+dt))
+        mask = (df["timestamp"] > (date-dt)) & (df["timestamp"] < (date+dt))
         return df.loc[mask]
 
 class CellManager:
