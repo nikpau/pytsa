@@ -6,6 +6,7 @@ A provided geographical area will be split into
 evenly-sized grids
 """
 from __future__ import annotations
+from dataclasses import dataclass
 
 import math
 from datetime import datetime, timedelta
@@ -33,7 +34,6 @@ from structs import (
     AdjacentCells, OUTOFBOUNDS,
     SUB_TO_ADJ
 )
-from tread import AISMessage
 
 # Settings for numerical integration
 Q_SETTINGS = dict(epsabs=1e-13,epsrel=1e-13,limit=500)
@@ -42,6 +42,27 @@ Latitude = float
 Longitude = float
 
 PI = np.pi
+
+@dataclass
+class AISMessage:
+    """
+    AIS Message object
+    """
+    sender: int
+    timestamp: datetime
+    lat: Latitude
+    lon: Longitude
+    COG: float # Course over ground
+    SOG: float # Speed over ground
+    cluster_type: str =  "" # ["EN","EX","PO"]
+    label_group: int | None = None
+
+    def __post_init__(self) -> None:
+        self.as_array = np.array(
+            [self.lat,self.lon,self.COG,self.SOG]
+        ).reshape(1,-1)
+
+
 
 class TargetVessel:
     
