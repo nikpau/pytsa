@@ -438,10 +438,10 @@ class SearchAgent:
         self, 
         datapath: str | list[str],
         frame: BoundingBox,
-        search_radius: float = 0.5,
-        max_tgt_ships: int = 10,
+        search_radius: float = 0.5, # in nautical miles
+        max_tgt_ships: int = 50,
         n_cells: int = 144,
-        v = True) -> None:
+        v = False) -> None:
        
         """ 
         frame: BoundingBox object setting the search space
@@ -616,7 +616,11 @@ class SearchAgent:
         d, indices = tree.query(
             [tpos.lat,tpos.lon],
             k=self.max_tgt_ships,
-            distance_upper_bound=0.5
+            # The conversion to degrees is only accurate at the equator.
+            # Everywhere else, the distances get smaller as lines of 
+            # Longitude are not parallel. Therefore, 
+            # this is a convervative estimate. 
+            distance_upper_bound=self.search_radius/60 # Convert to degrees
         )
         # Sort out any infinite distances
         res = [indices[i] for i,j in enumerate(d) if j != float("inf")]
