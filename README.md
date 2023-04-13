@@ -21,10 +21,10 @@ import pytsa
 from pathlib import Path
 
 frame = pytsa.BoundingBox(
-    LATMIN: 52.2 # [°N]
-    LATMAX: 56.9 # [°N]
-    LONMIN: 6.3  # [°E]
-    LONMAX: 9.5  # [°E]
+    LATMIN = 52.2, # [°N]
+    LATMAX = 56.9, # [°N]
+    LONMIN = 6.3,  # [°E]
+    LONMAX = 9.5,  # [°E]
 )
 sourcefile = Path("data/testdata.csv")
 
@@ -87,10 +87,10 @@ from pathlib import Path
 # Global geographic search area.
 # Outside these bounds, no search will be commenced
 frame = pytsa.BoundingBox(
-    LATMIN: 52.2 # [°N]
-    LATMAX: 56.9 # [°N]
-    LONMIN: 6.3  # [°E]
-    LONMAX: 9.5  # [°E]
+    LATMIN = 52.2, # [°N]
+    LATMAX = 56.9, # [°N]
+    LONMIN = 6.3,  # [°E]
+    LONMAX = 9.5,  # [°E]
 )
 
 # File containing AIS messages
