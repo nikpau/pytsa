@@ -130,7 +130,7 @@ class TargetVessel:
         # Calculate coefficients of 3rd degree polynomial 
         # connecting the shell points under
         # constraints described above. 
-        s, s_prime, pl_int, pathlen, _swapped = self._decide(p1,p2,k1,k2)
+        s, s_prime, pl_int, pathlen, _swapped = self.spline(p1,p2,k1,k2)
         
         # From here on, inferred variables will start with "i_"
         
@@ -217,7 +217,7 @@ class TargetVessel:
 
         return scipy.optimize.newton(pl_nwtn,x0=reference.y)
 
-    def _decide(
+    def spline(
         self,p1: Point,p2: 
         Point,k1: float,k2: float
         ) -> tuple[Callable[[Latitude | Longitude],Latitude | Longitude],
