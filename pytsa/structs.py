@@ -87,6 +87,19 @@ class TimePosition:
         return Position(self.lat,self.lon)
 
 @dataclass
+class DataColumns:
+    """
+    Data columns of the 
+    source file
+    """
+    MMSI: str = "MMSI"
+    LAT: str = "lat"
+    LON: str = "lon"
+    TIMESTAMP: str = "timestamp"
+    SPEED: str = "speed"
+    COURSE: str = "course"
+
+@dataclass
 class AdjacentCells:
     N:  Cell | _OUT_OF_BOUNDS_TYPE
     NE: Cell | _OUT_OF_BOUNDS_TYPE

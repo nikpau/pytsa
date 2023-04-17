@@ -14,6 +14,7 @@ from glob import glob
 from itertools import pairwise
 from threading import Thread
 from typing import Callable
+from pathlib import Path
 
 import ciso8601
 import geopandas as gpd
@@ -32,16 +33,21 @@ from structs import (
     BoundingBox, Cell, Point,
     Position, ShellError,TimePosition,
     AdjacentCells, OUTOFBOUNDS,
-    SUB_TO_ADJ
+    SUB_TO_ADJ, DataColumns
 )
 
 # Settings for numerical integration
 Q_SETTINGS = dict(epsabs=1e-13,epsrel=1e-13,limit=500)
 
+# Type aliases
 Latitude = float
 Longitude = float
 
+# Constants
 PI = np.pi
+
+# Path to geojson files containing the geometry
+GEOPATH = Path("data/geometry/combined/")
 
 @dataclass
 class AISMessage:
@@ -545,13 +551,16 @@ class SearchAgent:
         and return only messages that fall inside given `cell`-bounds.
         """
         snippets = []
-        spatial_filter = "lon > {} and lon < {} and lat > {} and lat < {}".format(
-            cell.LONMIN,cell.LONMAX,cell.LATMIN,cell.LATMAX
+        spatial_filter = (
+            f"{DataColumns.LON} > {cell.LONMIN} and "
+            f"{DataColumns.LON} < {cell.LONMAX} and "
+            f"{DataColumns.LAT} > {cell.LATMIN} and "
+            f"{DataColumns.LAT} < {cell.LATMAX}"
         )
         with Loader(cell):
             for file in self.datapath:
                 df = pd.read_csv(file,sep=",",usecols=list(range(10)))
-                df["timestamp"] = pd.to_datetime(df["timestamp"])
+                df[DataColumns.TIMESTAMP] = pd.to_datetime(df[DataColumns.TIMESTAMP])
                 snippets.append(df.query(spatial_filter))
 
         return pd.concat(snippets)
@@ -597,9 +606,9 @@ class SearchAgent:
         Build a kd-tree object from the `Lat` and `Lon` 
         columns of a pandas dataframe.
         """
-        assert "lat" in data and "lon" in data, \
+        assert DataColumns.LAT in data and DataColumns.LON in data, \
             "Input dataframe has no `lat` or `lon` columns"
-        return cKDTree(data[["lat","lon"]])
+        return cKDTree(data[[DataColumns.LAT,DataColumns.LON]])
 
     def _get_neighbors(self, tpos: TimePosition):
         """
@@ -636,12 +645,13 @@ class SearchAgent:
         The individual AIS Messages are sorted by date
         and are added to the respective TargetVessel's track attribute.
         """
-        df = df.sort_values(by="timestamp")
+        df = df.sort_values(by=DataColumns.TIMESTAMP)
         targets: dict[int,TargetVessel] = {}
         
         for mmsi,ts,lat,lon,sog,cog in zip(
-            df["MMSI"],df["timestamp"],df["lat"],
-            df["lon"],df["speed"],df["course"]):
+            df[DataColumns.MMSI],df[DataColumns.TIMESTAMP],
+            df[DataColumns.LAT], df[DataColumns.LON],
+            df[DataColumns.SPEED],df[DataColumns.COURSE]):
             
             if mmsi not in targets:
                 targets[mmsi] = TargetVessel(
@@ -692,9 +702,9 @@ class SearchAgent:
         rows whose `Timestamp` is not more than 
         `delta` minutes apart from imput `date`.
         """
-        assert "timestamp" in df, "No `timestamp` column found"
+        assert DataColumns.TIMESTAMP in df, "No `timestamp` column found"
         dt = timedelta(minutes=delta)
-        mask = (df["timestamp"] > (date-dt)) & (df["timestamp"] < (date+dt))
+        mask = (df[DataColumns.TIMESTAMP] > (date-dt)) & (df[DataColumns.TIMESTAMP] < (date+dt))
         return df.loc[mask]
 
 class CellManager:
@@ -920,7 +930,7 @@ class CellManager:
         # Load north sea geometry
         if f is None and ax is None:
             f, ax = plt.subplots()
-        files = glob("data/geometry/combined/*.geojson")
+        files = GEOPATH.glob("*.geojson")
         for file in files:
             f = gpd.read_file(file)
             f.plot(ax=ax,color="#283618",markersize=0.5,marker = ".")
