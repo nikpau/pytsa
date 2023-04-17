@@ -28,7 +28,7 @@ from scipy.sparse import csc_matrix
 from scipy.sparse.linalg import spilu
 from scipy.spatial import cKDTree
 
-from logger import Loader, logger
+from .logger import Loader, logger
 from .structs import (
     BoundingBox, Cell, Point,
     Position, ShellError,TimePosition,
