@@ -560,7 +560,8 @@ class SearchAgent:
         with Loader(cell):
             for file in self.datapath:
                 df = pd.read_csv(file,sep=",")
-                df[DataColumns.TIMESTAMP] = pd.to_datetime(df[DataColumns.TIMESTAMP])
+                df[DataColumns.TIMESTAMP] =\
+                    pd.to_datetime(df[DataColumns.TIMESTAMP]).dt.tz_localize(None)
                 snippets.append(df.query(spatial_filter))
 
         return pd.concat(snippets)
