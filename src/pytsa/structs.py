@@ -3,11 +3,10 @@ from __future__ import annotations
 from collections import namedtuple
 from dataclasses import dataclass, field
 from datetime import datetime
+import ciso8601
 
 Latitude  = float
 Longitude = float
-
-_DATEFORMAT = "%Y-%m-%d %H:%M:%S"
 
 Position = namedtuple("Position", ["lat","lon"])
 
@@ -74,10 +73,10 @@ class TimePosition:
         
     def _validate_timestamp(self) -> datetime:
         try:
-            return datetime.strptime(self.timestamp,_DATEFORMAT)
+            return ciso8601.parse_datetime(self.timestamp)
         except ValueError:
             raise ValueError(
-                "Incorrect date format, should be YYYY-MM-DD HH:MM"
+                f"Provided date '{self.timestamp}' is not ISO 8601 compliant."
             )
     
     @property
