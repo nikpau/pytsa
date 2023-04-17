@@ -29,7 +29,7 @@ from scipy.sparse.linalg import spilu
 from scipy.spatial import cKDTree
 
 from logger import Loader, logger
-from structs import (
+from .structs import (
     BoundingBox, Cell, Point,
     Position, ShellError,TimePosition,
     AdjacentCells, OUTOFBOUNDS,
