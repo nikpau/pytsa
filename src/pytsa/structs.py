@@ -62,7 +62,7 @@ class TimePosition:
     """
     Time and position object
     """
-    timestamp: datetime
+    timestamp: datetime | str
     lat: Latitude
     lon: Longitude
     as_array: list[float] = field(default=list)
@@ -72,6 +72,8 @@ class TimePosition:
         self.as_array = [self.timestamp,self.lat,self.lon]
         
     def _validate_timestamp(self) -> datetime:
+        if isinstance(self.timestamp,datetime):
+            return self.timestamp
         try:
             return ciso8601.parse_datetime(self.timestamp)
         except ValueError:
