@@ -15,6 +15,7 @@ from itertools import pairwise
 from threading import Thread
 from typing import Callable
 from pathlib import Path
+import warnings
 
 import ciso8601
 import geopandas as gpd
@@ -83,8 +84,63 @@ class TargetVessel:
         self.mmsi = mmsi 
         self.track = track
         self.v = v
-        
+
     def observe(self) -> np.ndarray:
+        """
+        Infers
+            - Course over ground (COG),
+            - Speed over ground (SOG),
+            - Latitude,
+            - Longitude,
+            
+        from two AIS records encompassing the provided
+        timestamp `ts`. Those two messages, `m1` and `m2`,
+        are used to perform a spline interpolation.
+        If the spline interpolation fails, a linear 
+        interpolation is performed instead.
+        """
+        try:
+            return self._observe_spline()
+        except Exception as e:
+            logger.warning(
+                f"Spline interpolation failed: {e}\n"
+                "Falling back to linear interpolation"
+                )
+            return self._observe_linear()
+
+    def _observe_linear(self) -> np.ndarray:
+        """
+        Fallback method in case the spline interpolation
+        fails. It is a simple linear interpolation between
+        the two AIS messages encompassing the provided timestamp.
+        """
+        if isinstance(self.ts,str):
+            self.ts = ciso8601.parse_datetime(self.ts)
+        
+        m1, m2 = self._find_shell()
+        p1, p2 = Point(m1.lon,m1.lat), Point(m2.lon,m2.lat)
+        k1, k2 = m1.COG, m2.COG
+        
+        # Time difference between queried date
+        # and first shell point
+        dt = (self.ts - m1.timestamp).total_seconds()
+        
+        # Time difference between first and second shell point
+        dt2 = (m2.timestamp - m1.timestamp).total_seconds()
+        
+        # Linear interpolation
+        i_LON = p1.x + (p2.x - p1.x) * dt / dt2
+        i_LAT = p1.y + (p2.y - p1.y) * dt / dt2
+        
+        # Linear interpolation of COG
+        i_COG = k1 + (k2 - k1) * dt / dt2
+        
+        # Linear interpolation of SOG
+        i_SOG = m1.SOG + (m2.SOG - m1.SOG) * dt / dt2
+        
+        return np.array([i_LAT,i_LON,i_COG,i_SOG]).reshape(1,-1)
+        
+    def _observe_spline(self) -> np.ndarray:
         """
         Infers
             - Course over ground (COG),
@@ -195,7 +251,9 @@ class TargetVessel:
             if flip_limits:
                 lower, upper = reference.x, k
             else: lower, upper = k, reference.x
-            _i = scipy.integrate.quad(f,lower,upper,**Q_SETTINGS)[0]
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                _i = scipy.integrate.quad(f,lower,upper,**Q_SETTINGS)[0]
             return _i - dist
 
         return scipy.optimize.newton(pl_nwtn,x0=reference.x)
@@ -356,7 +414,6 @@ class TargetVessel:
         X_inv = spilu(X)
         sol = X_inv.solve(y.T)
         
-        #sol2 = np.dot(np.linalg.pinv(X),b.T)
         a3,a2,a1,a0 = sol.flatten().tolist()
 
         def s(x: float) -> float:
