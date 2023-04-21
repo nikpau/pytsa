@@ -138,7 +138,7 @@ class TargetVessel:
         # Linear interpolation of SOG
         i_SOG = m1.SOG + (m2.SOG - m1.SOG) * dt / dt2
         
-        return np.array([i_LAT,i_LON,i_COG,i_SOG]).reshape(1,-1)
+        return np.array([i_LAT,i_LON,i_COG,i_SOG])
         
     def _observe_spline(self) -> np.ndarray:
         """
