@@ -69,8 +69,6 @@ class AISMessage:
             [self.lat,self.lon,self.COG,self.SOG]
         ).reshape(1,-1)
 
-
-
 class TargetVessel:
     
     def __init__(
@@ -504,6 +502,7 @@ class SearchAgent:
         search_radius: float = 0.5, # in nautical miles
         max_tgt_ships: int = 50,
         n_cells: int = 144,
+        filter: Callable[[pd.DataFrame],pd.DataFrame] = lambda x: x,
         v = False) -> None:
        
         """ 
@@ -519,6 +518,9 @@ class SearchAgent:
                 of the AIS messages is divided into.
                 (See also the `get_cell` function for more info)  
         max_tgt_ships: maximum number of target ships to store
+
+        filter: function to filter out unwanted AIS messages. Default is
+                the identity function.
         """
         self.v = v
 
@@ -550,6 +552,9 @@ class SearchAgent:
         # List of cell-indicies of all 
         # currently buffered cells
         self._buffered_cell_idx = []
+
+        # Custom filter function for AIS messages
+        self.filter = filter
         
         self._is_initialized = False
 
@@ -617,6 +622,7 @@ class SearchAgent:
         with Loader(cell):
             for file in self.datapath:
                 df = pd.read_csv(file,sep=",")
+                df = self.filter(df) # Apply custom filter
                 df[DataColumns.TIMESTAMP] = pd.to_datetime(df[DataColumns.TIMESTAMP])
                 snippets.append(df.query(spatial_filter))
 
@@ -669,8 +675,8 @@ class SearchAgent:
 
     def _get_neighbors(self, tpos: TimePosition):
         """
-        Return all AIS messages that are in
-        the proximity [±0.5°] of the provided position
+        Return all AIS messages that are no more than
+        `self.search_radius` [nm] away from the given position.
 
         Args:
             tpos: TimePosition object of postion and time for which 
