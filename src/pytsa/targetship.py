@@ -628,7 +628,7 @@ class SearchAgent:
                 df = pd.read_csv(file,sep=",")
                 df = self.filter(df) # Apply custom filter
                 df[DataColumns.TIMESTAMP] = pd.to_datetime(
-                    df[DataColumns.TIMESTAMP]).dt.date
+                    df[DataColumns.TIMESTAMP]).dt.tz_localize(None)
                 snippets.append(df.query(spatial_filter))
 
         return pd.concat(snippets)
@@ -782,7 +782,10 @@ class SearchAgent:
         """
         assert DataColumns.TIMESTAMP in df, "No `timestamp` column found"
         dt = timedelta(minutes=delta)
-        mask = (df[DataColumns.TIMESTAMP] > (date-dt)) & (df[DataColumns.TIMESTAMP] < (date+dt))
+        mask = (
+            (df[DataColumns.TIMESTAMP] > (date-dt)) & 
+            (df[DataColumns.TIMESTAMP] < (date+dt))
+        )
         return df.loc[mask]
 
 class CellManager:
