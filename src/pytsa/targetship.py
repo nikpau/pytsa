@@ -627,7 +627,8 @@ class SearchAgent:
             for file in self.datapath:
                 df = pd.read_csv(file,sep=",")
                 df = self.filter(df) # Apply custom filter
-                df[DataColumns.TIMESTAMP] = pd.to_datetime(df[DataColumns.TIMESTAMP])
+                df[DataColumns.TIMESTAMP] = pd.to_datetime(
+                    df[DataColumns.TIMESTAMP]).dt.date
                 snippets.append(df.query(spatial_filter))
 
         return pd.concat(snippets)
