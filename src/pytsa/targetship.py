@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from glob import glob
 from itertools import pairwise
 from threading import Thread
-from typing import Callable
+from typing import Callable, List, Tuple
 from pathlib import Path
 import warnings
 
@@ -79,7 +79,7 @@ class TargetVessel:
         self,
         ts: str | datetime, 
         mmsi: int, 
-        track: list[AISMessage],
+        track: List[AISMessage],
         v=True) -> None:
         
         self.ts = ts
@@ -280,7 +280,7 @@ class TargetVessel:
     def spline(
         self,p1: Point,p2: 
         Point,k1: float,k2: float
-        ) -> tuple[Callable[[Latitude | Longitude],Latitude | Longitude],
+        ) -> Tuple[Callable[[Latitude | Longitude],Latitude | Longitude],
         Callable[[Latitude | Longitude],Latitude | Longitude],
         Callable[[Latitude | Longitude],float],
         bool]:
@@ -356,7 +356,7 @@ class TargetVessel:
 
 
     
-    def _find_shell(self) -> tuple[AISMessage,AISMessage]:
+    def _find_shell(self) -> Tuple[AISMessage,AISMessage]:
         """
         Find the two AIS messages encompassing
         the objects' timestamp `self.ts`. I call this the 
@@ -381,7 +381,7 @@ class TargetVessel:
     @staticmethod
     def _spline(
         p1: Point, p2: Point, k1:float, k2:float
-        ) -> tuple[
+        ) -> Tuple[
             Callable[[float],float],
             Callable[[float],float],
             Callable[[float],float],
@@ -439,7 +439,7 @@ class TargetVessel:
     @staticmethod
     def _spline_swapped(
         p1: Point, p2: Point, k1:float, k2:float
-        ) -> tuple[
+        ) -> Tuple[
             Callable[[float],float],
             Callable[[float],float],
             Callable[[float],float],
@@ -501,7 +501,7 @@ class SearchAgent:
     
     def __init__(
         self, 
-        datapath: str | list[str],
+        datapath: str | List[str],
         frame: BoundingBox,
         search_radius: float = 0.5, # in nautical miles
         max_tgt_ships: int = 50,
@@ -598,7 +598,7 @@ class SearchAgent:
                 "to override this behavior"
             )
 
-    def get_ships(self, tpos: TimePosition) -> list[TargetVessel]:
+    def get_ships(self, tpos: TimePosition) -> List[TargetVessel]:
         """
         Returns a list of target ships
         present in the neighborhood of the given position. 
@@ -633,7 +633,7 @@ class SearchAgent:
 
         return pd.concat(snippets)
 
-    def _cells_for_buffering(self,pos: Position) -> list[Cell]:
+    def _cells_for_buffering(self,pos: Position) -> List[Cell]:
 
         # Find adjacent cells
         adjacents = self.cell_manager.adjacents(self.cell)
@@ -715,7 +715,7 @@ class SearchAgent:
         return filtered.iloc[res]
 
     def _construct_target_vessels(
-            self, df: pd.DataFrame, tpos: TimePosition) -> list[TargetVessel]:
+            self, df: pd.DataFrame, tpos: TimePosition) -> List[TargetVessel]:
         """
         Walk through the rows of `df` and construct a 
         `TargetVessel` object for every unique MMSI. 
@@ -754,7 +754,7 @@ class SearchAgent:
         return self._post_filter(targets,tpos)
 
     def _post_filter(self, 
-            targets: dict[int,TargetVessel], tpos: TimePosition) -> list[TargetVessel]:
+            targets: dict[int,TargetVessel], tpos: TimePosition) -> List[TargetVessel]:
         """
         Remove all vessels that have only a single
         observation or whose track lies outside
@@ -877,7 +877,7 @@ class CellManager:
         return int(root)
 
             
-    def _breakpoints(self) -> tuple[list[float],list[float]]:
+    def _breakpoints(self) -> Tuple[List[float],List[float]]:
         """
         Create breakpoints of latitude and longitude
         coordinates from initial ``frame`` resembling cell borders.

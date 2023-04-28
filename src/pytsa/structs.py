@@ -4,6 +4,7 @@ from collections import namedtuple
 from dataclasses import dataclass, field
 from datetime import datetime
 import ciso8601
+from typing import Dict, Tuple, List
 
 Latitude  = float
 Longitude = float
@@ -65,7 +66,7 @@ class TimePosition:
     timestamp: datetime | str
     lat: Latitude
     lon: Longitude
-    as_array: list[float] = field(default=list)
+    as_array: List[float] = field(default=list)
 
     def __post_init__(self)-> None:
         self.timestamp = self._validate_timestamp()
@@ -115,7 +116,7 @@ class AdjacentCells:
 # Map from subcells to 
 # adjacent cells to be
 # pre-buffered.
-SUB_TO_ADJ: dict[int,tuple[str,...]] = {
+SUB_TO_ADJ: Dict[int,Tuple[str,...]] = {
     1: ("W","NW","N"),
     2: ("N","NE","E"),
     3: ("S","SW","W"),
