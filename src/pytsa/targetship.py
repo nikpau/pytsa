@@ -40,6 +40,10 @@ from .structs import (
 # Settings for numerical integration
 Q_SETTINGS = dict(epsabs=1e-13,epsrel=1e-13,limit=500)
 
+class _NOT_DETERMINED_TYPE:
+    pass
+NOTDETERMINED = _NOT_DETERMINED_TYPE()
+
 # Type aliases
 Latitude = float
 Longitude = float
@@ -634,6 +638,8 @@ class SearchAgent:
         adjacents = self.cell_manager.adjacents(self.cell)
         # Determine current subcell
         subcell = self.cell_manager.get_subcell(pos,self.cell)
+        if subcell is NOTDETERMINED:
+            return NOTDETERMINED
 
         # Find which adjacent cells to pre-buffer
         # from the static "SUB_TO_ADJ" mapping
@@ -641,7 +647,10 @@ class SearchAgent:
 
         to_buffer = []
         for direction in selection:
-            to_buffer.append(getattr(adjacents,direction))
+            adj = getattr(adjacents,direction)
+            if adj is OUTOFBOUNDS:
+                continue
+            to_buffer.append(adj)
         
         return to_buffer
 
@@ -649,6 +658,11 @@ class SearchAgent:
 
         # Get cells that need to be pre-buffered
         cells = self._cells_for_buffering(pos)
+        # Cancel buffering if vessel is either 
+        # in the exact center of the cell or 
+        # there are no adjacent cells to buffer.
+        if cells is NOTDETERMINED or not cells:
+            return
 
         def buffer():
             self.cell_data = pd.concat(
@@ -988,6 +1002,7 @@ class CellManager:
             return 3
         elif pos.lon > lonhalf and pos.lat < lathlalf:
             return 4
+        else: return NOTDETERMINED # Vessel is exacty in the middle of the cell
         
     def plot_grid(self,*, f: plt.Figure = None, ax: plt.Axes = None) -> None:
         # Load north sea geometry
