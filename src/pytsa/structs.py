@@ -4,7 +4,7 @@ from collections import namedtuple
 from dataclasses import dataclass, field
 from datetime import datetime
 import ciso8601
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Union
 
 Latitude  = float
 Longitude = float
@@ -63,7 +63,7 @@ class TimePosition:
     """
     Time and position object
     """
-    timestamp: datetime | str
+    timestamp: Union[datetime, str]
     lat: Latitude
     lon: Longitude
     as_array: List[float] = field(default=list)
@@ -103,14 +103,14 @@ class DataColumns:
 
 @dataclass
 class AdjacentCells:
-    N:  Cell | _OUT_OF_BOUNDS_TYPE
-    NE: Cell | _OUT_OF_BOUNDS_TYPE
-    E:  Cell | _OUT_OF_BOUNDS_TYPE
-    SE: Cell | _OUT_OF_BOUNDS_TYPE
-    S:  Cell | _OUT_OF_BOUNDS_TYPE
-    SW: Cell | _OUT_OF_BOUNDS_TYPE
-    W:  Cell | _OUT_OF_BOUNDS_TYPE
-    NW: Cell | _OUT_OF_BOUNDS_TYPE
+    N:  Union[Cell, _OUT_OF_BOUNDS_TYPE]
+    NE: Union[Cell, _OUT_OF_BOUNDS_TYPE]
+    E:  Union[Cell, _OUT_OF_BOUNDS_TYPE]
+    SE: Union[Cell, _OUT_OF_BOUNDS_TYPE]
+    S:  Union[Cell, _OUT_OF_BOUNDS_TYPE]
+    SW: Union[Cell, _OUT_OF_BOUNDS_TYPE]
+    W:  Union[Cell, _OUT_OF_BOUNDS_TYPE]
+    NW: Union[Cell, _OUT_OF_BOUNDS_TYPE]
 
 
 # Map from subcells to 

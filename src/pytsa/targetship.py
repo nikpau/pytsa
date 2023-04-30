@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from glob import glob
 from itertools import pairwise
 from threading import Thread
-from typing import Callable, List, Tuple
+from typing import Callable, List, Tuple, Union
 from pathlib import Path
 import warnings
 
@@ -66,7 +66,7 @@ class AISMessage:
     COG: float # Course over ground
     SOG: float # Speed over ground
     cluster_type: str =  "" # ["EN","EX","PO"]
-    label_group: int | None = None
+    label_group: Union[int,None] = None
 
     def __post_init__(self) -> None:
         self.as_array = np.array(
@@ -77,7 +77,7 @@ class TargetVessel:
     
     def __init__(
         self,
-        ts: str | datetime, 
+        ts: Union[str,datetime], 
         mmsi: int, 
         track: List[AISMessage],
         v=True) -> None:
@@ -280,9 +280,9 @@ class TargetVessel:
     def spline(
         self,p1: Point,p2: 
         Point,k1: float,k2: float
-        ) -> Tuple[Callable[[Latitude | Longitude],Latitude | Longitude],
-        Callable[[Latitude | Longitude],Latitude | Longitude],
-        Callable[[Latitude | Longitude],float],
+        ) -> Tuple[Callable[[Union[Latitude,Longitude]],Union[Latitude,Longitude]],
+        Callable[[Union[Latitude,Longitude]],Union[Latitude,Longitude]],
+        Callable[[Union[Latitude,Longitude]],float],
         bool]:
         """
         Decide whether to use the spline along the
@@ -501,7 +501,7 @@ class SearchAgent:
     
     def __init__(
         self, 
-        datapath: str | List[str],
+        datapath: Union[str, List[str]],
         frame: BoundingBox,
         search_radius: float = 0.5, # in nautical miles
         max_tgt_ships: int = 50,
