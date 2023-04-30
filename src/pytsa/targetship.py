@@ -11,7 +11,6 @@ from dataclasses import dataclass
 import math
 from datetime import datetime, timedelta
 from glob import glob
-from itertools import pairwise
 from threading import Thread
 from typing import Callable, List, Tuple, Union
 from pathlib import Path
@@ -848,8 +847,8 @@ class CellManager:
         cidx = 0
         latbp= sorted(latbp)[::-1] # Descending Latitudes
         lonbp = sorted(lonbp) # Ascending Longitudes
-        for lat_max, lat_min in pairwise(latbp):
-            for lon_min, lon_max in pairwise(lonbp):
+        for lat_max, lat_min in zip(latbp,latbp[1:]):
+            for lon_min, lon_max in zip(lonbp,lonbp[1:]):
                 self.cells[cidx] = Cell(
                     LATMIN=lat_min,LATMAX=lat_max,
                     LONMIN=lon_min,LONMAX=lon_max,
