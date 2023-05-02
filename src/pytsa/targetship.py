@@ -50,6 +50,10 @@ Longitude = float
 # Constants
 PI = np.pi
 
+# Exceptions
+class FileLoadingError(Exception):
+    pass
+
 # Path to geojson files containing the geometry
 GEOPATH = Path("data/geometry/combined/")
 
@@ -622,13 +626,17 @@ class SearchAgent:
             f"{DataColumns.LAT} > {cell.LATMIN} and "
             f"{DataColumns.LAT} < {cell.LATMAX}"
         )
-        with Loader(cell):
-            for file in self.datapath:
-                df = pd.read_csv(file,sep=",")
-                df = self.filter(df) # Apply custom filter
-                df[DataColumns.TIMESTAMP] = pd.to_datetime(
-                    df[DataColumns.TIMESTAMP]).dt.tz_localize(None)
-                snippets.append(df.query(spatial_filter))
+        try:
+            with Loader(cell):
+                for file in self.datapath:
+                    df = pd.read_csv(file,sep=",")
+                    df = self.filter(df) # Apply custom filter
+                    df[DataColumns.TIMESTAMP] = pd.to_datetime(
+                        df[DataColumns.TIMESTAMP]).dt.tz_localize(None)
+                    snippets.append(df.query(spatial_filter))
+        except Exception as e:
+            logger.error(f"Error while loading cell data: {e}")
+            raise FileLoadingError(e)
 
         return pd.concat(snippets)
 
