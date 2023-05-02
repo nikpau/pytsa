@@ -90,6 +90,7 @@ class TargetVessel:
         self.mmsi = mmsi 
         self.track = track
         self.v = v
+        self.fail_count = 0
 
     def observe(self) -> np.ndarray:
 
@@ -114,9 +115,11 @@ class TargetVessel:
         try:
             return self._observe_spline()
         except Exception as e:
+            self.fail_count += 1
             logger.warning(
                 f"Spline interpolation failed: {e}\n"
-                "Falling back to linear interpolation"
+                "Falling back to linear interpolation. "
+                f"Fail count: {self.fail_count}"
                 )
             return self._observe_linear()
 
