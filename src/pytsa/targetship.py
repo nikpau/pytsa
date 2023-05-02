@@ -27,6 +27,7 @@ from matplotlib import pyplot as plt
 from scipy.sparse import csc_matrix
 from scipy.sparse.linalg import spilu
 from scipy.spatial import cKDTree
+import warnings
 
 from .logger import Loader, logger
 from .structs import (
@@ -91,6 +92,12 @@ class TargetVessel:
         self.v = v
 
     def observe(self) -> np.ndarray:
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return self._observe()
+
+    def _observe(self) -> np.ndarray:
         """
         Infers
             - Course over ground (COG),
