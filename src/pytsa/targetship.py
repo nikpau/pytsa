@@ -575,7 +575,7 @@ class SearchAgent:
         
         self._is_initialized = False
 
-    def init(self, pos: Position, *, supress_re_init=False)-> None:
+    def init(self, pos: Position, *, supress_warnings=False)-> None:
         """
         tpos: TimePosition object for which 
                 TargetShips shall be extracted from 
@@ -593,7 +593,7 @@ class SearchAgent:
                 f"{pos.lat:.3f}°N, {pos.lon:.3f}°E"
             )
         else:
-            if not supress_re_init:
+            if not supress_warnings:
                 logger.warn(
                     "TargetShip object is aleady initialized. Re-initializing "
                     "is slow as it reloads cell data. "
@@ -606,10 +606,10 @@ class SearchAgent:
                     else: break
                 self._is_initialized = False
                 self.init(pos)
-            logger.warn(
-                "Re-initialization skipped. Use the 'supress_re_init' flag"
-                "to override this behavior"
-            )
+            else:                
+                self._is_initialized = False
+                self.init(pos)
+
 
     def get_ships(self, tpos: TimePosition) -> List[TargetVessel]:
         """
