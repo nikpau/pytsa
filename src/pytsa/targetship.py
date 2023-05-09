@@ -8,16 +8,13 @@ evenly-sized grids
 from __future__ import annotations
 from dataclasses import dataclass
 
-import math
 from datetime import datetime, timedelta
-from glob import glob
 from threading import Thread
 from typing import Callable, List, Tuple, Union
-from pathlib import Path
+from .cell_manager import NOTDETERMINED, LatLonCellManager, UTMCellManager
 import warnings
 
 import ciso8601
-import geopandas as gpd
 import numpy as np
 import pandas as pd
 import scipy.integrate
@@ -27,22 +24,21 @@ from matplotlib import pyplot as plt
 from scipy.sparse import csc_matrix
 from scipy.sparse.linalg import spilu
 from scipy.spatial import cKDTree
+import utm
 import warnings
 
 from .logger import Loader, logger
 from .structs import (
-    BoundingBox, Cell, Point,
+    BoundingBox, Cell, LatLonCell, Point,
     Position, ShellError,TimePosition,
-    AdjacentCells, OUTOFBOUNDS,
-    SUB_TO_ADJ, DataColumns
+    OUTOFBOUNDS,SUB_TO_ADJ, DataColumns, 
+    UTMBoundingBox, UTMCell
 )
 
 # Settings for numerical integration
 Q_SETTINGS = dict(epsabs=1e-13,epsrel=1e-13,limit=500)
 
-class _NOT_DETERMINED_TYPE:
-    pass
-NOTDETERMINED = _NOT_DETERMINED_TYPE()
+
 
 # Type aliases
 Latitude = float
@@ -55,8 +51,6 @@ PI = np.pi
 class FileLoadingError(Exception):
     pass
 
-# Path to geojson files containing the geometry
-GEOPATH = Path("data/geometry/combined/")
 
 @dataclass
 class AISMessage:
@@ -67,13 +61,17 @@ class AISMessage:
     timestamp: datetime
     lat: Latitude
     lon: Longitude
-    COG: float # Course over ground
-    SOG: float # Speed over ground
-    cluster_type: str =  "" # ["EN","EX","PO"]
-    label_group: Union[int,None] = None
+    COG: float # Course over ground [degrees]
+    SOG: float # Speed over ground [knots]
+    _utm: bool = False
 
     def __post_init__(self) -> None:
+        self.easting, self.northing, self.zone_number, self.zone_letter = utm.from_latlon(
+            self.lat, self.lon
+        )
         self.as_array = np.array(
+            [self.northing,self.easting,self.COG,self.SOG]
+        ).reshape(1,-1) if self._utm else np.array(
             [self.lat,self.lon,self.COG,self.SOG]
         ).reshape(1,-1)
 
@@ -133,7 +131,10 @@ class TargetVessel:
             self.ts = ciso8601.parse_datetime(self.ts)
         
         m1, m2 = self._find_shell()
-        p1, p2 = Point(m1.lon,m1.lat), Point(m2.lon,m2.lat)
+        if m1._utm and m2._utm:
+            p1, p2 = Point(m1.easting,m1.northing), Point(m2.easting,m2.northing)
+        else:
+            p1, p2 = Point(m1.lon,m1.lat), Point(m2.lon,m2.lat)
         k1, k2 = m1.COG, m2.COG
         
         # Time difference between queried date
@@ -144,8 +145,8 @@ class TargetVessel:
         dt2 = (m2.timestamp - m1.timestamp).total_seconds()
         
         # Linear interpolation
-        i_LON = p1.x + (p2.x - p1.x) * dt / dt2
-        i_LAT = p1.y + (p2.y - p1.y) * dt / dt2
+        i_EAST = p1.x + (p2.x - p1.x) * dt / dt2
+        i_NORTH = p1.y + (p2.y - p1.y) * dt / dt2
         
         # Linear interpolation of COG
         i_COG = k1 + (k2 - k1) * dt / dt2
@@ -153,7 +154,8 @@ class TargetVessel:
         # Linear interpolation of SOG
         i_SOG = m1.SOG + (m2.SOG - m1.SOG) * dt / dt2
         
-        return np.array([i_LAT,i_LON,i_COG,i_SOG])
+        # Either [Lat,Lon,COG,SOG] or [Northing,Easting,COG,SOG]
+        return np.array([i_NORTH,i_EAST,i_COG,i_SOG])
         
     def _observe_spline(self) -> np.ndarray:
         """
@@ -185,7 +187,10 @@ class TargetVessel:
             self.ts = ciso8601.parse_datetime(self.ts)
         
         m1, m2 = self._find_shell()
-        p1, p2 = Point(m1.lon,m1.lat), Point(m2.lon,m2.lat)
+        if m1._utm and m2._utm:
+            p1, p2 = Point(m1.easting,m1.northing), Point(m2.easting,m2.northing)
+        else:
+            p1, p2 = Point(m1.lon,m1.lat), Point(m2.lon,m2.lat)
         k1, k2 = m1.COG, m2.COG
         
         # Time difference between queried date
@@ -215,39 +220,40 @@ class TargetVessel:
         # for the spline such that the length is equal to the
         # the distance traveled on the connecting spline
         if not _swapped:
-            i_LON = self._lon_along_path(
+            i_EAST = self._lon_along_path(
                 pl_int,p1,frac*pathlen,p1.is_on_left_of(p2)
             )
-            i_LAT = s(i_LON)
+            i_NORTH = s(i_EAST)
             
             # Course over ground is the arc tangent
             # of the first derivative of our spline
             # shifted by pi/2 due to spline constraints
             if p1.is_on_left_of(p2):
-                i_COG = -np.arctan(s_prime(i_LON)) + PI/2
+                i_COG = -np.arctan(s_prime(i_EAST)) + PI/2
             else: 
-                i_COG = -np.arctan(s_prime(i_LON)) - PI/2
+                i_COG = -np.arctan(s_prime(i_EAST)) - PI/2
             
             # Transform from [-pi,+pi] rad to [0,360] deg
             i_COG = (i_COG % (2*PI))* 180/PI
 
         else: 
-            i_LAT = self._lat_along_path(
+            i_NORTH = self._lat_along_path(
                 pl_int,p1,frac*pathlen,p1.is_above_of(p2)
             )
-            i_LON = s(i_LAT)
+            i_EAST = s(i_NORTH)
             
             # Course over ground is the arc tangent
             # of the first derivative of our spline
             if not p1.is_above_of(p2):
-                i_COG = np.arctan(s_prime(i_LAT))
+                i_COG = np.arctan(s_prime(i_NORTH))
             else:
-                i_COG = np.arctan(s_prime(i_LAT)) - PI
+                i_COG = np.arctan(s_prime(i_NORTH)) - PI
             
             # Transform from [-pi,+pi] rad to [0,360] deg
             i_COG = (i_COG % (2*PI))* 180/PI
 
-        obs = np.array([i_LAT,i_LON,i_COG,i_SOG])
+        # Either [Lat,Lon,COG,SOG] or [Northing,Easting,COG,SOG]
+        obs = np.array([i_NORTH,i_EAST,i_COG,i_SOG])
 
         if self.v:
             self._v(s,obs,m1,m2,_swapped)
@@ -563,8 +569,15 @@ class SearchAgent:
         # of AIS records is divided into
         self.n_cells = n_cells
         
-        # Init cell manager 
-        self.cell_manager = CellManager(frame,n_cells)
+        # Init cell manager
+        if isinstance(frame,UTMBoundingBox):
+            self._utm = True
+            self.cell_manager = UTMCellManager(frame,n_cells)
+            logger.info("UTM Cell Manager initialized")
+        else:
+            self._utm = False
+            self.cell_manager = LatLonCellManager(frame,n_cells)
+            logger.info("LatLon Cell Manager initialized")
 
         # List of cell-indicies of all 
         # currently buffered cells
@@ -575,12 +588,17 @@ class SearchAgent:
         
         self._is_initialized = False
 
-    def init(self, pos: Position, *, supress_warnings=False)-> None:
+    def init(
+            self, 
+            tpos: TimePosition, *, 
+            supress_warnings=False)-> None:
         """
         tpos: TimePosition object for which 
                 TargetShips shall be extracted from 
                 AIS records.
         """
+        tpos._is_utm = self._utm
+        pos = tpos.position
         if not self._is_initialized:
             # Current Cell based on init-position
             self.cell = self.cell_manager.get_cell_by_position(pos)
@@ -588,9 +606,11 @@ class SearchAgent:
             # Load AIS Messages for specific cell
             self.cell_data = self._load_cell_data(self.cell)
             self._is_initialized = True
+            pos = f"{pos.lat:.3f}N, {pos.lon:.3f}E" if isinstance(tpos.position,Position)\
+                  else f"{pos.easting:.3f}mE, {pos.northing:.3f}mN"
             logger.info(
                 "Target Ship search agent initialized at "
-                f"{pos.lat:.3f}°N, {pos.lon:.3f}°E"
+                f"{pos}"
             )
         else:
             if not supress_warnings:
@@ -624,12 +644,18 @@ class SearchAgent:
         neigbors = self._get_neighbors(tpos)
         return self._construct_target_vessels(neigbors, tpos)
 
-    def _load_cell_data(self, cell: BoundingBox) -> pd.DataFrame:
+    def _load_cell_data(self, cell: Cell) -> pd.DataFrame:
         """
         Load AIS Messages from a given path or list of paths
         and return only messages that fall inside given `cell`-bounds.
         """
         snippets = []
+
+        # Spatial filter for cell. Since the data is
+        # provided in the lat/lon format, we have to
+        # convert the cell to lat/lon as well.
+        if isinstance(cell,UTMCell):
+            cell = cell.to_latlon()
         spatial_filter = (
             f"{DataColumns.LON} > {cell.LONMIN} and "
             f"{DataColumns.LON} < {cell.LONMAX} and "
@@ -650,7 +676,7 @@ class SearchAgent:
 
         return pd.concat(snippets)
 
-    def _cells_for_buffering(self,pos: Position) -> List[Cell]:
+    def _cells_for_buffering(self,pos: Position) -> List[LatLonCell]:
 
         # Find adjacent cells
         adjacents = self.cell_manager.adjacents(self.cell)
@@ -700,10 +726,20 @@ class SearchAgent:
         """
         Build a kd-tree object from the `Lat` and `Lon` 
         columns of a pandas dataframe.
+
+        If the object was initialized with a UTMCellManager,
+        the data is converted to UTM before building the tree.
         """
         assert DataColumns.LAT in data and DataColumns.LON in data, \
             "Input dataframe has no `lat` or `lon` columns"
-        return cKDTree(data[[DataColumns.LAT,DataColumns.LON]])
+        if isinstance(self.cell_manager,UTMCellManager):
+            eastings, northings, *_ = utm.from_latlon(
+                data[DataColumns.LAT].values,
+                data[DataColumns.LON].values
+                )
+            return cKDTree(np.column_stack((northings,eastings)))
+        else:
+            return cKDTree(data[[DataColumns.LAT,DataColumns.LON]])
 
     def _get_neighbors(self, tpos: TimePosition):
         """
@@ -715,16 +751,19 @@ class SearchAgent:
                     neighbors shall be found        
 
         """
+        tpos._is_utm = self._utm
         filtered = self._time_filter(self.cell_data,tpos.timestamp,self.time_delta)
         tree = self._build_kd_tree(filtered)
+        # The conversion to degrees is only accurate at the equator.
+        # Everywhere else, the distances get smaller as lines of 
+        # Longitude are not parallel. Therefore, 
+         # this is a convervative estimate.         
+        search_radius = (nm2m(self.search_radius) if self._utm 
+                         else self.search_radius/60) # Convert to degrees
         d, indices = tree.query(
-            [tpos.lat,tpos.lon],
+            list(tpos.position),
             k=self.max_tgt_ships,
-            # The conversion to degrees is only accurate at the equator.
-            # Everywhere else, the distances get smaller as lines of 
-            # Longitude are not parallel. Therefore, 
-            # this is a convervative estimate. 
-            distance_upper_bound=self.search_radius/60 # Convert to degrees
+            distance_upper_bound=search_radius
         )
         # Sort out any infinite distances
         res = [indices[i] for i,j in enumerate(d) if j != float("inf")]
@@ -747,27 +786,26 @@ class SearchAgent:
             df[DataColumns.MMSI],df[DataColumns.TIMESTAMP],
             df[DataColumns.LAT], df[DataColumns.LON],
             df[DataColumns.SPEED],df[DataColumns.COURSE]):
+
+            msg = AISMessage(
+                sender=mmsi,
+                timestamp=ts.to_pydatetime(),
+                lat=lat,lon=lon,
+                COG=cog,SOG=sog,
+                _utm=self._utm
+            )
             
             if mmsi not in targets:
                 targets[mmsi] = TargetVessel(
                     v = self.v,
                     ts = tpos.timestamp,
                     mmsi=mmsi,
-                    track=[AISMessage(
-                        sender=mmsi,
-                        timestamp=ts.to_pydatetime(),
-                        lat=lat,lon=lon,
-                        COG=cog,SOG=sog
-                    )]
+                    track=[msg]
                 )
             else: 
                 v = targets[mmsi]
-                v.track.append(AISMessage(
-                        sender=mmsi,
-                        timestamp=ts.to_pydatetime(),
-                        lat=lat,lon=lon,
-                        COG=cog,SOG=sog
-                    ))
+                v.track.append(msg)
+
         return self._post_filter(targets,tpos)
 
     def _post_filter(self, 
@@ -805,252 +843,6 @@ class SearchAgent:
         )
         return df.loc[mask]
 
-class CellManager:
-    """
-    Cell Manager object implementing several utility
-    functions to generate and manage cells generated from
-    a geographical frame:
-    
-    Args:
-        frame (BoundingBox): A geographical area which
-                                is to be converted into a 
-                                grid of `n_cells` cells.
-        n_cells (int):      Number of cells, the provided 
-                            frame is divided into.
-    """
-    def __init__(self, frame: BoundingBox, n_cells: int) -> None:
-        
-        # Bounding box of the entire frame
-        self.frame = frame
-        
-        # Number of cells, the frame 
-        # shall be divided into
-        self.n_cells = n_cells
-        
-        # Dict holding all cells in the
-        # current frame
-        self.cells: dict[int,Cell] = {}
-
-        # Get the number of rows and colums.
-        # Since the grid is always square,
-        # they are the same
-        self.nrows = self.ncols = self._side_length()
-        
-        self._setup()
-        
-    def _setup(self) -> None:
-        """
-        Create individual Cells from
-        provided frame and cell number and assigns
-        ascending indices. The first cell
-        starts in the North-West:
-        
-        N
-        ^
-        |
-        |----> E
-        
-        Example of a 5x5 Grid:
-        ------------------------------------
-        |  0   |  1   |  2   |  3   |  4   |
-        |      |      |      |      |      |
-        ------------------------------------
-        |  5   |  6   |  7   |  8   |  9   |
-        |      |      |      |      |      |            
-        ------------------------------------       
-        | ...  | ...  | ...  | ...  | ...  |             
-                
-        """
-        latbp, lonbp = self._breakpoints()
-        cidx = 0
-        latbp= sorted(latbp)[::-1] # Descending Latitudes
-        lonbp = sorted(lonbp) # Ascending Longitudes
-        for lat_max, lat_min in zip(latbp,latbp[1:]):
-            for lon_min, lon_max in zip(lonbp,lonbp[1:]):
-                self.cells[cidx] = Cell(
-                    LATMIN=lat_min,LATMAX=lat_max,
-                    LONMIN=lon_min,LONMAX=lon_max,
-                    index=cidx
-                )
-                cidx += 1
-
-    def _side_length(self) -> int:
-        """
-        Get the side length (number of cells per side) for the
-        total number of cells specified during instantiation.
-
-        The number of cells to be constructed `n_cells` must be a 
-        square number. If it is not the next closest square number
-        will be used instead 
-        """        
-        root = math.sqrt(self.n_cells)
-        if not root%1==0:
-            root = round(root)
-            logger.info(
-                "Provided argument to `n_cells` "
-                "is no square number. Rounding to next square."
-                f"\nProvided: {self.n_cells}\nUsing: {root**2}"
-            )
-        return int(root)
-
-            
-    def _breakpoints(self) -> Tuple[List[float],List[float]]:
-        """
-        Create breakpoints of latitude and longitude
-        coordinates from initial ``frame`` resembling cell borders.
-        """
-        f = self.frame
-        nrow = self.nrows
-        ncol = self.ncols
-
-        # Set limiters for cells 
-        lat_extent = f.LATMAX-f.LATMIN
-        lon_extent = f.LONMAX-f.LONMIN
-        # Split into equal sized cells
-        csplit = [f.LONMIN + i*(lon_extent/ncol) for i in range(ncol)]
-        rsplit = [f.LATMIN + i*(lat_extent/nrow) for i in range(nrow)]
-        csplit.append(f.LONMAX) # Add endpoints
-        rsplit.append(f.LATMAX) # Add endpoints
-        return rsplit, csplit
-            
-    def inside_frame(self, pos: Position) -> bool:
-        """Boolean if the provided position
-        is inside the bounds of the cell 
-        manager's frame"""
-        lat, lon = pos
-        return (
-            lat > self.frame.LATMIN and lat < self.frame.LATMAX and
-            lon > self.frame.LONMIN and lon < self.frame.LONMAX
-        )
-        
-    @staticmethod
-    def inside_cell(pos: Position, cell: Cell) -> bool:
-        """Boolean if the provided position
-        is inside the bounds of the provided cell"""
-        lat, lon = pos
-        return (
-            lat > cell.LATMIN and lat < cell.LATMAX and
-            lon > cell.LONMIN and lon < cell.LONMAX
-        )
-                
-    def get_cell_by_index(self, index: int) -> Cell:
-        """Get cell by index"""
-        assert not index > len(self.cells) 
-        return self.cells[index]
-    
-    def get_cell_by_position(self, pos: Position) -> Cell:
-        """Get Cell by Lat-Lon Position"""
-        assert self.inside_frame(pos)
-        for cell in self.cells.values():
-            if self.inside_cell(pos,cell):
-                return cell
-        raise RuntimeError(
-            "Could not locate cell via position.\n"
-            f"Cell: {cell!r}\nPosition: {pos!r}"
-            )
-
-    def adjacents(self, cell: Cell = None, index: int = None) -> AdjacentCells:
-        """
-        Return an "AdjacentCells" instance containig all adjacent 
-        cells named by cardinal directions for the provided cell or its index.
-        If an adjacent cell in any direction is out of bounds
-        an "OUTOFBOUNDS" instance will be returned instead of a cell.
-        """
-        if cell is not None and index is not None:
-            raise RuntimeError(
-                "Please provide either a cell or an index to a cell, not both."
-            )
-        if cell is not None:
-            index = cell.index
-
-        grid = np.arange(self.nrows**2).reshape(self.ncols,self.nrows)
-
-        # Get row and column of the input cell
-        row, col = index//self.nrows, index%self.ncols
-        
-        # Shorten to avoid clutter
-        _cbi = self.get_cell_by_index
-
-        # Calc adjacents for cardinal directions.
-        # (Surely not the most efficient, but it works).
-        n = _cbi(grid[row-1,col]) if row-1 >= 0 else OUTOFBOUNDS
-        s = _cbi(grid[row+1,col]) if row+1 < self.nrows else OUTOFBOUNDS
-        e = _cbi(grid[row,col+1]) if col+1 < self.ncols else OUTOFBOUNDS
-        w = _cbi(grid[row,col-1]) if col-1 >= 0 else OUTOFBOUNDS
-
-        # Composite directions
-        ne = _cbi(grid[row-1,col+1]) if (row-1 >= 0 and col+1 <= self.nrows) else OUTOFBOUNDS
-        se = _cbi(grid[row+1,col+1]) if (row+1 < self.nrows and col+1 < self.nrows) else OUTOFBOUNDS
-        sw = _cbi(grid[row+1,col-1]) if (row+1 < self.nrows and col-1 >= 0) else OUTOFBOUNDS
-        nw = _cbi(grid[row-1,col-1]) if (row-1 >= 0 and col-1 >= 0) else OUTOFBOUNDS
-
-        return AdjacentCells(
-            N=n,NE=ne,E=e,SE=se,
-            S=s,SW=sw,W=w,NW=nw
-        )
-
-    def get_subcell(self,pos: Position, cell: Cell) -> int:
-        """
-        Each cell will be divided into four subcells
-        by bisecting the cell in the middle along each
-        axis:
-
-        Example of a singe cell with its four subcells
-
-        N
-        ^
-        |---------|---------|
-        |    1    |    2    |
-        |         |         |
-        ---------------------
-        |    3    |    4    |
-        |         |         |
-        |---------|---------|-> E
-
-        We will later use these subcells to determine 
-        which adjacent cell to pre-buffer.
-        """
-        assert self.inside_cell(pos,cell)
-        lonext = cell.LONMAX-cell.LONMIN # Longitudinal extent of cell
-        lonhalf = cell.LONMAX - lonext/2
-        latext = cell.LATMAX-cell.LATMIN # Lateral extent of cell
-        lathlalf = cell.LATMAX - latext/2
-        if pos.lon < lonhalf and pos.lat > lathlalf:
-            return 1
-        elif pos.lon > lonhalf and pos.lat > lathlalf:
-            return 2
-        elif pos.lon < lonhalf and pos.lat < lathlalf:
-            return 3
-        elif pos.lon > lonhalf and pos.lat < lathlalf:
-            return 4
-        else: return NOTDETERMINED # Vessel is exacty in the middle of the cell
-        
-    def plot_grid(self,*, f: plt.Figure = None, ax: plt.Axes = None) -> None:
-        # Load north sea geometry
-        if f is None and ax is None:
-            f, ax = plt.subplots()
-        files = GEOPATH.glob("*.geojson")
-        for file in files:
-            f = gpd.read_file(file)
-            f.plot(ax=ax,color="#283618",markersize=0.5,marker = ".")
-            
-        lats = [c.LATMIN for c in self.cells.values()]
-        lons = [c.LONMIN for c in self.cells.values()]
-        lats.append(self.frame.LATMAX)
-        lons.append(self.frame.LONMAX)
-
-        # Place grid according to global frame
-        ax.hlines(
-            lats,self.frame.LONMIN,
-            self.frame.LONMAX,colors="#6d6875"
-        )
-        ax.vlines(
-            lons,self.frame.LATMIN,
-            self.frame.LATMAX,colors="#6d6875"
-        )
-        if f is None and ax is None:
-            plt.show()
-        
 
 def _dtr(angle: float) -> float:
     """Transform from [0,360] to 
@@ -1066,3 +858,11 @@ def _dtr2(angle: float) -> float:
     heading is provided clockwise"""
     o = ((angle-180)%360)-180
     return -o/180*np.pi
+
+def m2nm(m: float) -> float:
+    """Convert meters to nautical miles"""
+    return m/1852
+
+def nm2m(nm: float) -> float:
+    """Convert nautical miles to meters"""
+    return nm*1852
