@@ -161,11 +161,11 @@ class TimePosition:
         self.as_array: List[float] = field(default=list)
         self.timestamp = self._validate_timestamp()
 
-        if self.lat is None or self.lon is None:
-            self.lat, self.lon = utm.to_latlon(
-                self.easting, self.northing,
-                northern=True
-            )
+        # if self.lat is None or self.lon is None:
+        #     self.lat, self.lon = utm.to_latlon(
+        #         self.easting, self.northing,
+        #         northern=True
+        #     )
 
         self._is_utm = as_utm
         if self.easting is None or self.northing is None:
