@@ -149,7 +149,6 @@ class TimePosition:
             lon: Longitude = None,
             easting: float = None,
             northing: float = None,
-            zone_number: int = None,
             as_utm: bool = False
             )-> None:
         
@@ -165,7 +164,7 @@ class TimePosition:
         if self.lat is None or self.lon is None:
             self.lat, self.lon = utm.to_latlon(
                 self.easting, self.northing,
-                zone_number=zone_number,
+                northern=True
             )
 
         self._is_utm = as_utm
