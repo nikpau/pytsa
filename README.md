@@ -29,7 +29,7 @@ frame = pytsa.LatLonBoundingBox(
     LATMAX = 56.9, # [°N]
     LONMIN = 6.3,  # [°E]
     LONMAX = 9.5,  # [°E]
-).to_utm()
+)
 
 # UTM Box with [northing, easting, SOG, COG] outputs
 frame = pytsa.LatLonBoundingBox(
