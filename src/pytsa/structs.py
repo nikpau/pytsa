@@ -145,22 +145,34 @@ class TimePosition:
     def __init__(
             self,
             timestamp: Union[datetime, str],
-            lat: Latitude,
-            lon: Longitude,
+            lat: Latitude = None,
+            lon: Longitude = None,
+            easting: float = None,
+            northing: float = None,
+            zone_number: int = None,
             as_utm: bool = False
             )-> None:
         
         self.timestamp = timestamp
         self.lat = lat
         self.lon= lon
+        self.easting = easting
+        self.northing = northing
 
         self.as_array: List[float] = field(default=list)
         self.timestamp = self._validate_timestamp()
 
+        if self.lat is None or self.lon is None:
+            self.lat, self.lon = utm.to_latlon(
+                self.easting, self.northing,
+                zone_number=zone_number,
+            )
+
         self._is_utm = as_utm
-        self.easting, self.northing, *_ = utm.from_latlon(
-                self.lat, self.lon
-        )
+        if self.easting is None or self.northing is None:
+            self.easting, self.northing, *_ = utm.from_latlon(
+                    self.lat, self.lon
+            )
         if self._is_utm:
             self.as_array = [self.timestamp,self.easting,self.northing]
         else:
