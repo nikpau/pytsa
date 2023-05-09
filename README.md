@@ -12,6 +12,9 @@ $ pip install git+https://github.com/nikpau/pytsa
 The search agent must be instantiated with two components: Its _BoundingBox_ and _data path_:
 
 - _BoundingBox_: Reference frame containing the spatial extent of the searchable area in degrees of latitude and longitude. 
+
+    - If you want your output to be of the form [northing, easting, SOG, COG] you can call the `.to_utm()` method on the bounding box.
+
 - _data path_: File path to a `.csv` file containing the AIS messages to consider for the search procedure. See the next section for details on the data structure.
 
 Example instantiation for a small area in the North Sea:
@@ -20,12 +23,22 @@ Example instantiation for a small area in the North Sea:
 import pytsa
 from pathlib import Path
 
-frame = pytsa.BoundingBox(
+# Lat-Lon Box with [lat,lon, SOG, COG] outputs
+frame = pytsa.LatLonBoundingBox(
     LATMIN = 52.2, # [°N]
     LATMAX = 56.9, # [°N]
     LONMIN = 6.3,  # [°E]
     LONMAX = 9.5,  # [°E]
-)
+).to_utm()
+
+# UTM Box with [northing, easting, SOG, COG] outputs
+frame = pytsa.LatLonBoundingBox(
+    LATMIN = 52.2, # [°N]
+    LATMAX = 56.9, # [°N]
+    LONMIN = 6.3,  # [°E]
+    LONMAX = 9.5,  # [°E]
+).to_utm()
+
 sourcefile = Path("data/testdata.csv")
 
 search_agent = pytsa.SearchAgent(sourcefile,frame)
@@ -60,7 +73,8 @@ tpos = TimePosition(
     lat=52.245,
     lon=9.878
 )
-search_agent.init(tpos.position)
+
+search_agent.init(tpos)
 ```
 
 After initialization, a search can be commenced by
@@ -86,7 +100,7 @@ from pathlib import Path
 
 # Global geographic search area.
 # Outside these bounds, no search will be commenced
-frame = pytsa.BoundingBox(
+frame = pytsa.LatLonBoundingBox(
     LATMIN = 52.2, # [°N]
     LATMAX = 56.9, # [°N]
     LONMIN = 6.3,  # [°E]
@@ -109,7 +123,7 @@ tpos = pytsa.TimePosition(
 )
 
 # Buffer AIS messages dependent on location
-search_agent.init(tpos.position)
+search_agent.init(tpos)
 
 # Search for TargetVessels
 target_ships = search_agent.get_ships(tpos)
