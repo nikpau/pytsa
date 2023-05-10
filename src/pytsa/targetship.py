@@ -753,6 +753,9 @@ class SearchAgent:
         """
         tpos._is_utm = self._utm
         filtered = self._time_filter(self.cell_data,tpos.timestamp,self.time_delta)
+        # Check if filterd result is empty
+        if filtered.empty:
+            return filtered
         tree = self._build_kd_tree(filtered)
         # The conversion to degrees is only accurate at the equator.
         # Everywhere else, the distances get smaller as lines of 
