@@ -840,7 +840,8 @@ class SearchAgent:
         `delta` minutes apart from imput `date`.
         """
         assert DataColumns.TIMESTAMP in df, "No `timestamp` column found"
-        dt = timedelta(minutes=delta)
+        date = pd.Timestamp(date, tz=None)
+        dt = pd.Timedelta(delta, unit="minutes")
         mask = (
             (df[DataColumns.TIMESTAMP] > (date-dt)) & 
             (df[DataColumns.TIMESTAMP] < (date+dt))
