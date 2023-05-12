@@ -206,6 +206,7 @@ class DataColumns:
     MMSI: str = "MMSI"
     LAT: str = "lat"
     LON: str = "lon"
+    MESSAGE_ID: str = "message_id"
     TIMESTAMP: str = "timestamp"
     SPEED: str = "speed"
     COURSE: str = "course"
