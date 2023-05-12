@@ -404,13 +404,13 @@ class UTMCellManager(LatLonCellManager):
         northhalf = cell.max_northing - northext/2
         eastext = cell.max_easting-cell.min_easting # Lateral extent of cell
         easthalf = cell.max_easting - eastext/2
-        if pos.northing < northhalf and pos.easting > easthalf:
+        if pos.northing > northhalf and pos.easting < easthalf:
             return 1
         elif pos.northing > northhalf and pos.easting > easthalf:
             return 2
         elif pos.northing < northhalf and pos.easting < easthalf:
             return 3
-        elif pos.northing > northhalf and pos.easting < easthalf:
+        elif pos.northing < northhalf and pos.easting > easthalf:
             return 4
         else: return NOTDETERMINED # Vessel is exacty in the middle of the cell
         
