@@ -121,18 +121,18 @@ class TargetVessel:
         try:
             return self._observe_spline()
         except Exception as e:
-            self.fail_count += 1
-            logger.warning(
-                f"Spline interpolation failed: {e}\n"
-                "Falling back to linear interpolation. "
-                f"Fail count: {self.fail_count}"
-                )
             if skip_linear:
                 raise SplineInterpolationError(
                     "Spline interpolation failed. "
                     "Linear interpolation was skipped."
                 )
             else:
+                self.fail_count += 1
+                logger.warning(
+                    f"Spline interpolation failed: {e}\n"
+                    "Falling back to linear interpolation. "
+                    f"Fail count: {self.fail_count}"
+                    )
                 return self._observe_linear()
 
     def _observe_linear(self) -> np.ndarray:
