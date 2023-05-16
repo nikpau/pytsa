@@ -51,6 +51,9 @@ PI = np.pi
 class FileLoadingError(Exception):
     pass
 
+class SplineInterpolationError(Exception):
+    pass
+
 
 @dataclass
 class AISMessage:
@@ -90,13 +93,7 @@ class TargetVessel:
         self.v = v
         self.fail_count = 0
 
-    def observe(self) -> np.ndarray:
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            return self._observe()
-
-    def _observe(self) -> np.ndarray:
+    def observe(self, skip_linear = False) -> np.ndarray:
         """
         Infers
             - Course over ground (COG),
@@ -109,7 +106,18 @@ class TargetVessel:
         are used to perform a spline interpolation.
         If the spline interpolation fails, a linear 
         interpolation is performed instead.
+
+        If `skip_linear` is set to `True`, the linear
+        interpolation will be skipped and a
+        `SplineInterpolationError` will be raised instead.
+        This can be seen as a "strict" mode.
         """
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return self._observe(skip_linear)
+
+    def _observe(self, skip_linear = False) -> np.ndarray:
+
         try:
             return self._observe_spline()
         except Exception as e:
@@ -119,7 +127,13 @@ class TargetVessel:
                 "Falling back to linear interpolation. "
                 f"Fail count: {self.fail_count}"
                 )
-            return self._observe_linear()
+            if skip_linear:
+                raise SplineInterpolationError(
+                    "Spline interpolation failed. "
+                    "Linear interpolation was skipped."
+                )
+            else:
+                return self._observe_linear()
 
     def _observe_linear(self) -> np.ndarray:
         """
