@@ -51,7 +51,7 @@ class ColoredFormatter(logging.Formatter):
         format_orig = self._style._fmt
 
         # Replace the original format with one customized by logging level
-        if record.levelno == logging.DEBUG:
+        if record.levelno == logging.WARNING:
             self._style._fmt = f'{colorize("[%(levelname)s]",color="yellow")} - %(message)s'
 
         elif record.levelno == logging.INFO:
