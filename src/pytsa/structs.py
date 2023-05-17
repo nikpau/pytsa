@@ -210,6 +210,7 @@ class DataColumns:
     TIMESTAMP: str = "timestamp"
     SPEED: str = "speed"
     COURSE: str = "course"
+    TURN: str = "turn"
 
 @dataclass
 class AdjacentCells:

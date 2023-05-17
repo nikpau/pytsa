@@ -66,6 +66,8 @@ class AISMessage:
     lon: Longitude
     COG: float # Course over ground [degrees]
     SOG: float # Speed over ground [knots]
+    ROT: float # Rate of turn [degrees/minute]
+    dROT: float = None # Change of ROT [degrees/minute²]
     _utm: bool = False
 
     def __post_init__(self) -> None:
@@ -77,6 +79,18 @@ class AISMessage:
         ).reshape(1,-1) if self._utm else np.array(
             [self.lat,self.lon,self.COG,self.SOG]
         ).reshape(1,-1)
+        self.ROT = self._rot_handler(self.ROT)
+    
+    def _rot_handler(self, rot: float) -> float:
+        """
+        Handles the Rate of Turn (ROT) value
+        """
+        sign = np.sign(rot)
+        if abs(rot) == 127 or abs(rot) == 128:
+            return None
+        else:
+            return sign * (rot / 4.733)**2
+        
 
 class TargetVessel:
     
@@ -92,17 +106,20 @@ class TargetVessel:
         self.track = track
         self.v = v
         self.fail_count = 0
+        self._fill_rot()
 
     def observe(self, skip_linear = False) -> np.ndarray:
         """
         Infers
-            - Course over ground (COG),
-            - Speed over ground (SOG),
-            - Latitude,
-            - Longitude,
+            - Course over ground (COG) [degrees],
+            - Speed over ground (SOG) [knots],
+            - Latitude (northing) [degrees] (meters),
+            - Longitude (easting) [degrees] (meters),
+            - Rate of turn (ROT) [degrees/minute],
+            - Change of ROT [degrees/minute²],
             
         from two AIS records encompassing the provided
-        timestamp `ts`. Those two messages, `m1` and `m2`,
+        timestamp `self.ts`. Those two messages
         are used to perform a spline interpolation.
         If the spline interpolation fails, a linear 
         interpolation is performed instead.
@@ -123,7 +140,6 @@ class TargetVessel:
         except Exception as e:
             if skip_linear:
                 raise SplineInterpolationError(
-                    "Spline interpolation failed. "
                     "Linear interpolation was skipped."
                 )
             else:
@@ -167,23 +183,23 @@ class TargetVessel:
         
         # Linear interpolation of SOG
         i_SOG = m1.SOG + (m2.SOG - m1.SOG) * dt / dt2
-        
+
+        # Linear interpolation of ROT
+        i_ROT = m1.ROT + (m2.ROT - m1.ROT) * dt / dt2
+
+        # Linear interpolation of dROT
+        i_dROT = m1.dROT + (m2.dROT - m1.dROT) * dt / dt2
+
         # Either [Lat,Lon,COG,SOG] or [Northing,Easting,COG,SOG]
-        return np.array([i_NORTH,i_EAST,i_COG,i_SOG])
+        return np.array([i_NORTH,i_EAST,i_COG,i_SOG,i_ROT,i_dROT])
         
     def _observe_spline(self) -> np.ndarray:
         """
-        Infers
-            - Course over ground (COG),
-            - Speed over ground (SOG),
-            - Latitude,
-            - Longitude,
-            
-        from two AIS records encompassing the provided
-        timestamp `ts`. Those two messages, `m1` and `m2`, 
-        which I call their ``shell``, are used to infer the vessels 
-        trajectory using a cubic spline interpolation and information 
-        about the ships' position and orientation in time:
+        Two AIS messages, `m1` and `m2`, 
+        which I call ``shell``, are used to infer the vessels 
+        trajectory anywhere betweeen using a cubic spline 
+        interpolation and information about the ships' position 
+        and orientation in time:
         
         Let p_A(x) be a thrid degree polynomial with coeficients a ∈ A.
         
@@ -224,10 +240,18 @@ class TargetVessel:
         
         # From here on, inferred variables will start with "i_"
         
-        # Speed over ground is just the average between the
+        # Speed over ground is the average between the
         # two shell speeds weighted by the distance covered on
         # the connecting spline
         i_SOG = frac*m2.SOG + (1-frac)*m1.SOG
+
+        # Rate of turn is the average between the
+        # two shell rates of turn weighted by the distance covered on
+        # the connecting spline
+        i_ROT = frac*m2.ROT + (1-frac)*m1.ROT
+
+        # First derivative of the rate of turn
+        i_dROT = frac*m2.dROT + (1-frac)*m1.dROT
         
         # Longitude will be estimated by solving for the 
         # upper integration limit of the path length integral 
@@ -266,8 +290,8 @@ class TargetVessel:
             # Transform from [-pi,+pi] rad to [0,360] deg
             i_COG = (i_COG % (2*PI))* 180/PI
 
-        # Either [Lat,Lon,COG,SOG] or [Northing,Easting,COG,SOG]
-        obs = np.array([i_NORTH,i_EAST,i_COG,i_SOG])
+        # Either [Lat,Lon,COG,SOG,...] or [Northing,Easting,COG,SOG,...]
+        obs = np.array([i_NORTH,i_EAST,i_COG,i_SOG,i_ROT,i_dROT])
 
         if self.v:
             self._v(s,obs,m1,m2,_swapped)
@@ -388,6 +412,25 @@ class TargetVessel:
         plt.show()
 
 
+    def _fill_rot(self) -> None:
+        """
+        Fill out missing rotation data and first 
+        derivative of roatation by inferring it from 
+        the previous and next AIS messages' headings.
+        """
+        for idx, msg in enumerate(self.track):
+            if idx == 0:
+                continue
+            # Fill out missing ROT data
+            if msg.ROT is None:
+                num = self.track[idx].COG - self.track[idx-1].COG 
+                den = (self.track[idx].timestamp - self.track[idx-1].timestamp).seconds()*60
+                self.track[idx].ROT = num/den
+
+            # Calculate first derivative of ROT
+            num = self.track[idx+1].ROT - self.track[idx].ROT
+            den = (self.track[idx+1].timestamp - self.track[idx].timestamp).seconds()*60
+            self.track[idx].dROT = num/den
     
     def _find_shell(self) -> Tuple[AISMessage,AISMessage]:
         """
@@ -800,16 +843,18 @@ class SearchAgent:
         df = df.sort_values(by=DataColumns.TIMESTAMP)
         targets: dict[int,TargetVessel] = {}
         
-        for mmsi,ts,lat,lon,sog,cog in zip(
+        for mmsi,ts,lat,lon,sog,cog,turn in zip(
             df[DataColumns.MMSI],df[DataColumns.TIMESTAMP],
             df[DataColumns.LAT], df[DataColumns.LON],
-            df[DataColumns.SPEED],df[DataColumns.COURSE]):
+            df[DataColumns.SPEED],df[DataColumns.COURSE],
+            df[DataColumns.TURN]):
 
             msg = AISMessage(
                 sender=mmsi,
                 timestamp=ts.to_pydatetime(),
                 lat=lat,lon=lon,
                 COG=cog,SOG=sog,
+                ROT=turn,
                 _utm=self._utm
             )
             
