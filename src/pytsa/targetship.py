@@ -85,6 +85,8 @@ class AISMessage:
         """
         Handles the Rate of Turn (ROT) value
         """
+        try: rot = float(rot) 
+        except: return None
         sign = np.sign(rot)
         if abs(rot) == 127 or abs(rot) == 128:
             return None
@@ -185,10 +187,16 @@ class TargetVessel:
         i_SOG = m1.SOG + (m2.SOG - m1.SOG) * dt / dt2
 
         # Linear interpolation of ROT
-        i_ROT = m1.ROT + (m2.ROT - m1.ROT) * dt / dt2
+        if m1.ROT is None or m2.ROT is None:
+            i_ROT = 0
+        else:
+            i_ROT = m1.ROT + (m2.ROT - m1.ROT) * dt / dt2
 
         # Linear interpolation of dROT
-        i_dROT = m1.dROT + (m2.dROT - m1.dROT) * dt / dt2
+        if m1.dROT is None or m2.dROT is None:
+            i_dROT = 0
+        else:
+            i_dROT = m1.dROT + (m2.dROT - m1.dROT) * dt / dt2
 
         # Either [Lat,Lon,COG,SOG] or [Northing,Easting,COG,SOG]
         return np.array([i_NORTH,i_EAST,i_COG,i_SOG,i_ROT,i_dROT])
@@ -248,10 +256,21 @@ class TargetVessel:
         # Rate of turn is the average between the
         # two shell rates of turn weighted by the distance covered on
         # the connecting spline
-        i_ROT = frac*m2.ROT + (1-frac)*m1.ROT
+
+        # We need to be careful here because the rate of turn
+        # and its first derivative may not be defined for
+        # both shell points. If it is not,
+        # we will set the rate of turn to 0.
+        if m2.ROT is None or m1.ROT is None:
+            i_ROT = 0
+        else:
+            i_ROT = frac*m2.ROT + (1-frac)*m1.ROT
 
         # First derivative of the rate of turn
-        i_dROT = frac*m2.dROT + (1-frac)*m1.dROT
+        if m2.dROT is None or m1.dROT is None:
+            i_dROT = 0
+        else:
+            i_dROT = frac*m2.dROT + (1-frac)*m1.dROT
         
         # Longitude will be estimated by solving for the 
         # upper integration limit of the path length integral 
@@ -419,7 +438,7 @@ class TargetVessel:
         the previous and next AIS messages' headings.
         """
         for idx, msg in enumerate(self.track):
-            if idx == 0:
+            if idx == 0 or idx == len(self.track)-1:
                 continue
             # Fill out missing ROT data
             if msg.ROT is None:
