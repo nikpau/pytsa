@@ -636,7 +636,7 @@ class SearchAgent:
         
         # Maximum temporal deviation of target
         # ships from provided time in `init()`
-        self.time_delta = 5
+        self.time_delta = 10
         
         # Search radius in [°] around agent
         self.search_radius = search_radius
@@ -896,11 +896,11 @@ class SearchAgent:
         Remove all vessels that have only a single
         observation or whose track lies outside
         the queried timestamp. 
-
-        Furthermore we need to check for too-slow vessels
-        as a large temporal gap for slow vessels leads to 
-        a very high input senitivity and thus to ill-conditioned
-        matricies for the spline interpolation
+        
+        Check for too-slow vessels
+        
+        
+        
         """
         for mmsi, target_ship in list(targets.items()):
             if (len(target_ship.track) < 2 or not 
