@@ -187,8 +187,9 @@ class SearchAgent:
         Interpolate all target ship tracks
         """
         for tgt in tgts:
-            tgt.fill_rot()
-            tgt.construct_splines()
+            tgt.fill_rot() # Fill rate of turn if not in data
+            tgt.ts_to_unix() # Convert timestamps to unix
+            tgt.construct_splines() # Construct splines
         return tgts
 
     def _load_cell_data(self, cell: Cell) -> pd.DataFrame:
