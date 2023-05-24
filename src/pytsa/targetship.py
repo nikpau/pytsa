@@ -253,7 +253,7 @@ class TargetVessel:
             den = (self.track[idx+1].timestamp - self.track[idx].timestamp).seconds*60
             self.track[idx].dROT = num/den
     
-    def _find_shell(self) -> None:
+    def find_shell(self) -> None:
         """
         Find the two AIS messages encompassing
         the objects' track elements and save them

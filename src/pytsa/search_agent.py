@@ -188,6 +188,7 @@ class SearchAgent:
         """
         for tgt in tgts:
             tgt.fill_rot() # Fill rate of turn if not in data
+            tgt.find_shell() # Find shell (start/end of traj) of target ship
             tgt.ts_to_unix() # Convert timestamps to unix
             tgt.construct_splines() # Construct splines
         return tgts
