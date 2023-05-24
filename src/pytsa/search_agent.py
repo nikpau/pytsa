@@ -374,7 +374,7 @@ class SearchAgent:
             # Spline interpolation needs at least 3 points
             if (len(target_ship.track) < 3 or not
                 (target_ship.track[0].timestamp < 
-                tpos.timestamp.timestamp() < 
+                tpos.timestamp < 
                 target_ship.track[-1].timestamp) or
                 any(v.SOG < .5 for v in target_ship.track)):
                 del targets[mmsi]
