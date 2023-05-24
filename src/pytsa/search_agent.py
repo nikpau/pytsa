@@ -81,7 +81,6 @@ class SearchAgent:
         filter: function to filter out unwanted AIS messages. Default is
                 the identity function.
         """
-        self.v = v
 
         if not isinstance(datapath,list):
             self.datapath = [datapath]
@@ -339,7 +338,6 @@ class SearchAgent:
             
             if mmsi not in targets:
                 targets[mmsi] = TargetVessel(
-                    v = self.v,
                     ts = tpos.timestamp,
                     mmsi=mmsi,
                     track=[msg]
