@@ -140,6 +140,11 @@ class TargetVessel:
         self.track = track
         self._fill_rot()
         self._ts_to_unix()
+    
+    def construct_splines(self) -> None:
+        """
+        Construct splines for the target vessel
+        """
         self.splines = TrackSplines(self.track)
 
     def observe_at_query(self) -> np.ndarray:
