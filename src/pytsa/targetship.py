@@ -196,16 +196,17 @@ class TargetVessel:
         given interval in [seconds].
         """
         # Convert query timestamps to unix time
-        start = start.timestamp()
-        end = end.timestamp()
+        if isinstance(start, datetime):
+            start = start.timestamp()
+            end = end.timestamp()
 
         # Check if the interval boundary is within the
         # track's timestamps
-        if start < self.lower.timestamp.timestamp():
+        if start < self.lower.timestamp:
             raise OutofTimeBoundsError(
                 "Start timestamp is before the track's first timestamp."
             )
-        if end > self.upper.timestamp.timestamp():
+        if end > self.upper.timestamp:
             raise OutofTimeBoundsError(
                 "End timestamp is after the track's last timestamp."
             )
