@@ -373,8 +373,8 @@ class SearchAgent:
         
         """
         for mmsi, target_ship in list(targets.items()):
-            # Spline interpolation needs at least 3 points
-            if (len(target_ship.track) < 3 or not
+            # Spline interpolation needs at least 4 points
+            if (len(target_ship.track) < 4 or not
                 (target_ship.track[0].timestamp < 
                 tpos.timestamp < 
                 target_ship.track[-1].timestamp) or
