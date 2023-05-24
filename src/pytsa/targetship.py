@@ -245,6 +245,9 @@ class TargetVessel:
                 den = (self.track[idx].timestamp - self.track[idx-1].timestamp).seconds*60
                 self.track[idx].ROT = num/den
 
+        for idx, msg in enumerate(self.track):
+            if idx == len(self.track)-1:
+                continue
             # Calculate first derivative of ROT
             num = self.track[idx+1].ROT - self.track[idx].ROT
             den = (self.track[idx+1].timestamp - self.track[idx].timestamp).seconds*60
