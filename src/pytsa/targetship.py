@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from datetime import datetime
+import os
 from typing import Union, List
 from matplotlib import pyplot as plt
 
@@ -324,7 +325,7 @@ class TrajectoryMatcher:
         
         return obs_vessel1, obs_vessel2
 
-    def plot(self, interval: int, every: int = 10) -> None:
+    def plot(self, interval: int, every: int = 10, path: str = None) -> None:
         """
         Plot the trajectories of both vessels
         between the start and end points, with the
@@ -469,8 +470,16 @@ class TrajectoryMatcher:
         )
         plt.suptitle("Trajectories")
         plt.tight_layout()
+
+        if path is None:
+            # Make directory if it does not exist
+            if not os.path.exists("~/aisout/plots"):
+                os.makedirs("~/aisout/plots")
+            savepath = f"~/aisout/plots/trajectories_{self.vessel1.mmsi}_{self.vessel2.mmsi}.png"
+        else:
+            savepath = path
         plt.savefig(
-            f"out/plots/trajectories_{self.vessel1.mmsi}_{self.vessel2.mmsi}.png",
+            f"{path}/trajectories_{self.vessel1.mmsi}_{self.vessel2.mmsi}.png",
             dpi=300
         )
         plt.close()
