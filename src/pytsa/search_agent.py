@@ -179,7 +179,15 @@ class SearchAgent:
         neigbors = self._get_neighbors(tpos)
         tgts = self._construct_target_vessels(neigbors, tpos)
         # Contruct Splines for all target ships
+        tgts = self._construct_splines(tgts)
+        return tgts
+    
+    def _construct_splines(self, tgts: List[TargetVessel]) -> List[TargetVessel]:
+        """
+        Interpolate all target ship tracks
+        """
         for tgt in tgts:
+            tgt.fill_rot()
             tgt.construct_splines()
         return tgts
 
@@ -366,7 +374,7 @@ class SearchAgent:
             # Spline interpolation needs at least 3 points
             if (len(target_ship.track) < 3 or not
                 (target_ship.track[0].timestamp < 
-                tpos.timestamp < 
+                tpos.timestamp.timestamp() < 
                 target_ship.track[-1].timestamp) or
                 any(v.SOG < .5 for v in target_ship.track)):
                 del targets[mmsi]
