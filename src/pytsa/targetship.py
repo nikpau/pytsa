@@ -318,12 +318,15 @@ class TrajectoryMatcher:
         
         return obs_vessel1, obs_vessel2
 
-    def plot(self, interval: int) -> None:
+    def plot(self, interval: int, every: int = 10) -> None:
         """
         Plot the trajectories of both vessels
         between the start and end points, with the
         given interval in [seconds].
         """
+        n = every
+        v1color = "#d90429"
+        v2color = "#2b2d42"
 
         # Check if obs_vessel1 and obs_vessel2 are defined
         try:
@@ -333,15 +336,15 @@ class TrajectoryMatcher:
             obs_vessel1, obs_vessel2 = self.observe_interval(interval)
 
         # Plot trajectories and metrics
-        f, ((ax1,ax2),(ax3,ax4)) = plt.subplots(2,2, figsize=(10,10))
+        f, ((ax1,ax2),(ax3,ax4)) = plt.subplots(2,2, figsize=(16,10))
 
         # Original timestamps for both vessels
 
         # Plot trajectories in easting-northing space
-        v1p = ax1.plot(obs_vessel1[:,1], obs_vessel1[:,0])
-        v2p = ax1.plot(obs_vessel2[:,1], obs_vessel2[:,0])
-        v1s = ax1.scatter(obs_vessel1[:,1], obs_vessel1[:,0])
-        v2s = ax1.scatter(obs_vessel2[:,1], obs_vessel2[:,0])
+        v1p = ax1.plot(obs_vessel1[:,1], obs_vessel1[:,0],color = v1color)[0]
+        v2p = ax1.plot(obs_vessel2[:,1], obs_vessel2[:,0],color=v2color)[0]
+        v1s = ax1.scatter(obs_vessel1[:,1][::n], obs_vessel1[:,0][::n],color = v1color)
+        v2s = ax1.scatter(obs_vessel2[:,1][::n], obs_vessel2[:,0][::n],color=v2color)
         ax1.set_title("Trajectories")
         ax1.set_xlabel("Easting [m]")
         ax1.set_ylabel("Northing [m]")
@@ -351,27 +354,27 @@ class TrajectoryMatcher:
         )
 
         # Plot easting in time-space
-        v1ep = ax2.plot(obs_vessel1[:,6],obs_vessel1[:,1])
-        v2ep = ax2.scatter(obs_vessel1[:,6],obs_vessel1[:,1])
-        v1es = ax2.plot(obs_vessel2[:,6],obs_vessel2[:,1])
-        v2es = ax2.scatter(obs_vessel2[:,6],obs_vessel2[:,1])
+        v1ep = ax2.plot(obs_vessel1[:,6],obs_vessel1[:,1],color = v1color)[0]
+        v1es = ax2.scatter(obs_vessel1[:,6][::n],obs_vessel1[:,1][::n],color=v1color)
+        v2ep = ax2.plot(obs_vessel2[:,6],obs_vessel2[:,1],color = v2color)[0]
+        v2es = ax2.scatter(obs_vessel2[:,6][::n],obs_vessel2[:,1][::n],color=v2color)
 
         # Original trajectories for both vessels
         v1eso = ax2.plot(
             [m.timestamp for m in self.vessel1.track],
-            [m.easting for m in self.vessel1.track]
-        )
+            [m.easting for m in self.vessel1.track],color = v1color
+        )[0]
         v2eso = ax2.plot(
             [m.timestamp for m in self.vessel2.track],
-            [m.easting for m in self.vessel2.track]
-        )
+            [m.easting for m in self.vessel2.track],color=v2color
+        )[0]
         v1esp = ax2.scatter(
             [m.timestamp for m in self.vessel1.track],
-            [m.easting for m in self.vessel1.track]
+            [m.easting for m in self.vessel1.track],color = v1color
         )
         v2esp = ax2.scatter(
             [m.timestamp for m in self.vessel2.track],
-            [m.easting for m in self.vessel2.track]
+            [m.easting for m in self.vessel2.track],color=v2color
         )
         ax2.set_title("Easting")
         ax2.set_xlabel("Timetamp [ms]")
@@ -387,27 +390,27 @@ class TrajectoryMatcher:
         )
 
         # Plot northing in time-space
-        v1np = ax3.plot(obs_vessel1[:,6],obs_vessel1[:,0])
-        v2np = ax3.scatter(obs_vessel1[:,6],obs_vessel1[:,0])
-        v1ns = ax3.plot(obs_vessel2[:,6],obs_vessel2[:,0])
-        v2ns = ax3.scatter(obs_vessel2[:,6],obs_vessel2[:,0])
+        v1np = ax3.plot(obs_vessel1[:,6],obs_vessel1[:,0],color=v1color)[0]
+        v1ns = ax3.scatter(obs_vessel1[:,6][::n],obs_vessel1[:,0][::n],color=v1color)
+        v2np = ax3.plot(obs_vessel2[:,6],obs_vessel2[:,0],color=v2color)[0]
+        v2ns = ax3.scatter(obs_vessel2[:,6][::n],obs_vessel2[:,0][::n],color=v2color)
 
         # Original trajectories for both vessels
-        v1nso = ax2.plot(
+        v1nso = ax3.plot(
             [m.timestamp for m in self.vessel1.track],
-            [m.northing for m in self.vessel1.track]
-        )
-        v2nso = ax2.plot(
+            [m.northing for m in self.vessel1.track],color=v1color
+        )[0]
+        v2nso = ax3.plot(
             [m.timestamp for m in self.vessel2.track],
-            [m.northing for m in self.vessel2.track]
-        )
-        v1nsp = ax2.scatter(
+            [m.northing for m in self.vessel2.track],color=v2color
+        )[0]
+        v1nsp = ax3.scatter(
             [m.timestamp for m in self.vessel1.track],
-            [m.northing for m in self.vessel1.track]
+            [m.northing for m in self.vessel1.track],color=v1color,marker="x"
         )
-        v2nsp = ax2.scatter(
+        v2nsp = ax3.scatter(
             [m.timestamp for m in self.vessel2.track],
-            [m.northing for m in self.vessel2.track]
+            [m.northing for m in self.vessel2.track],color=v2color,marker="x"
         )
         ax3.set_title("Nothing")
         ax3.set_xlabel("Timetamp [ms]")
@@ -423,27 +426,27 @@ class TrajectoryMatcher:
         )
         
         # Plot COG in time-space
-        v1cp = ax4.plot(obs_vessel1[:,6],obs_vessel1[:,2])
-        v2cp = ax4.scatter(obs_vessel1[:,6],obs_vessel1[:,2])
-        v1cs = ax4.plot(obs_vessel2[:,6],obs_vessel2[:,2])
-        v2cs = ax4.scatter(obs_vessel2[:,6],obs_vessel2[:,2])
+        v1cp = ax4.plot(obs_vessel1[:,6],obs_vessel1[:,2],color=v1color)[0]
+        v1cs = ax4.scatter(obs_vessel1[:,6][::n],obs_vessel1[:,2][::n],color=v1color)
+        v2cp = ax4.plot(obs_vessel2[:,6],obs_vessel2[:,2],color=v2color)[0]
+        v2cs = ax4.scatter(obs_vessel2[:,6][::n],obs_vessel2[:,2][::n],color=v2color)
 
         # Original trajectories for both vessels
-        v1cso = ax2.plot(
+        v1cso = ax4.plot(
             [m.timestamp for m in self.vessel1.track],
-            [m.cog for m in self.vessel1.track]
-        )
-        v2cso = ax2.plot(
+            [m.COG for m in self.vessel1.track],color=v1color
+        )[0]
+        v2cso = ax4.plot(
             [m.timestamp for m in self.vessel2.track],
-            [m.cog for m in self.vessel2.track]
-        )
-        v1csp = ax2.scatter(
+            [m.COG for m in self.vessel2.track],color=v2color
+        )[0]
+        v1csp = ax4.scatter(
             [m.timestamp for m in self.vessel1.track],
-            [m.cog for m in self.vessel1.track]
+            [m.COG for m in self.vessel1.track],color=v1color,marker="x"
         )
-        v2csp = ax2.scatter(
+        v2csp = ax4.scatter(
             [m.timestamp for m in self.vessel2.track],
-            [m.cog for m in self.vessel2.track]
+            [m.COG for m in self.vessel2.track],color=v2color,marker="x"
         )
 
         ax4.set_title("Course over Ground")
@@ -460,7 +463,8 @@ class TrajectoryMatcher:
         )
         plt.suptitle("Trajectories")
         plt.tight_layout()
-        plt.show()
+        plt.savefig(f"out/plots/trajectories_{self.vessel1.mmsi}_{self.vessel2.mmsi}.pdf")
+        plt.close()
         
 
 
