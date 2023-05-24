@@ -244,7 +244,10 @@ class TargetVessel:
             if msg.ROT is None:
                 num = self.track[idx].COG - self.track[idx-1].COG 
                 den = (self.track[idx].timestamp - self.track[idx-1].timestamp).seconds*60
-                self.track[idx].ROT = num/den
+                if den == 0:
+                    continue
+                else:
+                    self.track[idx].ROT = num/den
 
         for idx, msg in enumerate(self.track):
             if idx == 0 or idx == len(self.track)-1:
@@ -252,7 +255,10 @@ class TargetVessel:
             # Calculate first derivative of ROT
             num = self.track[idx+1].ROT - self.track[idx].ROT
             den = (self.track[idx+1].timestamp - self.track[idx].timestamp).seconds*60
-            self.track[idx].dROT = num/den
+            if den == 0:
+                continue
+            else:
+                self.track[idx].dROT = num/den
     
     def find_shell(self) -> None:
         """
@@ -370,11 +376,11 @@ class TrajectoryMatcher:
         )[0]
         v1esp = ax2.scatter(
             [m.timestamp for m in self.vessel1.track],
-            [m.easting for m in self.vessel1.track],color = v1color
+            [m.easting for m in self.vessel1.track],color = v1color,marker="x"
         )
         v2esp = ax2.scatter(
             [m.timestamp for m in self.vessel2.track],
-            [m.easting for m in self.vessel2.track],color=v2color
+            [m.easting for m in self.vessel2.track],color=v2color,marker="x"
         )
         ax2.set_title("Easting")
         ax2.set_xlabel("Timetamp [ms]")
@@ -463,7 +469,10 @@ class TrajectoryMatcher:
         )
         plt.suptitle("Trajectories")
         plt.tight_layout()
-        plt.savefig(f"out/plots/trajectories_{self.vessel1.mmsi}_{self.vessel2.mmsi}.pdf")
+        plt.savefig(
+            f"out/plots/trajectories_{self.vessel1.mmsi}_{self.vessel2.mmsi}.png",
+            dpi=300
+        )
         plt.close()
         
 
