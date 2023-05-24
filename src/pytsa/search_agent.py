@@ -177,7 +177,11 @@ class SearchAgent:
         # Check if cells need buffering
         self._buffer(tpos.position)
         neigbors = self._get_neighbors(tpos)
-        return self._construct_target_vessels(neigbors, tpos)
+        tgts = self._construct_target_vessels(neigbors, tpos)
+        # Contruct Splines for all target ships
+        for tgt in tgts:
+            tgt.construct_splines()
+        return tgts
 
     def _load_cell_data(self, cell: Cell) -> pd.DataFrame:
         """
