@@ -366,14 +366,14 @@ class TrajectoryMatcher:
         v2es = ax2.scatter(obs_vessel2[:,6][::n],obs_vessel2[:,1][::n],color=v2color)
 
         # Original trajectories for both vessels
-        v1eso = ax2.plot(
-            [m.timestamp for m in self.vessel1.track],
-            [m.easting for m in self.vessel1.track],color = v1color
-        )[0]
-        v2eso = ax2.plot(
-            [m.timestamp for m in self.vessel2.track],
-            [m.easting for m in self.vessel2.track],color=v2color
-        )[0]
+        # v1eso = ax2.plot(
+        #     [m.timestamp for m in self.vessel1.track],
+        #     [m.easting for m in self.vessel1.track],color = v1color
+        # )[0]
+        # v2eso = ax2.plot(
+        #     [m.timestamp for m in self.vessel2.track],
+        #     [m.easting for m in self.vessel2.track],color=v2color
+        # )[0]
         v1esp = ax2.scatter(
             [m.timestamp for m in self.vessel1.track],
             [m.easting for m in self.vessel1.track],color = v1color,marker="x"
@@ -386,7 +386,7 @@ class TrajectoryMatcher:
         ax2.set_xlabel("Timetamp [ms]")
         ax2.set_ylabel("Easting [m]")
         ax2.legend(
-            [(v1ep,v1es),(v2ep,v2es),(v1eso,v1esp),(v2eso,v2esp)],
+            [(v1ep,v1es),(v2ep,v2es),(v1esp),(v2esp)],
             [
                 f"Vessel {self.vessel1.mmsi}", 
                 f"Vessel {self.vessel2.mmsi}",
@@ -402,14 +402,14 @@ class TrajectoryMatcher:
         v2ns = ax3.scatter(obs_vessel2[:,6][::n],obs_vessel2[:,0][::n],color=v2color)
 
         # Original trajectories for both vessels
-        v1nso = ax3.plot(
-            [m.timestamp for m in self.vessel1.track],
-            [m.northing for m in self.vessel1.track],color=v1color
-        )[0]
-        v2nso = ax3.plot(
-            [m.timestamp for m in self.vessel2.track],
-            [m.northing for m in self.vessel2.track],color=v2color
-        )[0]
+        # v1nso = ax3.plot(
+        #     [m.timestamp for m in self.vessel1.track],
+        #     [m.northing for m in self.vessel1.track],color=v1color
+        # )[0]
+        # v2nso = ax3.plot(
+        #     [m.timestamp for m in self.vessel2.track],
+        #     [m.northing for m in self.vessel2.track],color=v2color
+        # )[0]
         v1nsp = ax3.scatter(
             [m.timestamp for m in self.vessel1.track],
             [m.northing for m in self.vessel1.track],color=v1color,marker="x"
@@ -422,7 +422,7 @@ class TrajectoryMatcher:
         ax3.set_xlabel("Timetamp [ms]")
         ax3.set_ylabel("Nothing [m]")
         ax3.legend(
-            [(v1np,v1ns),(v2np,v2ns),(v1nso,v1nsp),(v2nso,v2nsp)],
+            [(v1np,v1ns),(v2np,v2ns),(v1nsp),(v2nsp)],
             [
                 f"Vessel {self.vessel1.mmsi}", 
                 f"Vessel {self.vessel2.mmsi}",
@@ -438,14 +438,14 @@ class TrajectoryMatcher:
         v2cs = ax4.scatter(obs_vessel2[:,6][::n],obs_vessel2[:,2][::n],color=v2color)
 
         # Original trajectories for both vessels
-        v1cso = ax4.plot(
-            [m.timestamp for m in self.vessel1.track],
-            [m.COG for m in self.vessel1.track],color=v1color
-        )[0]
-        v2cso = ax4.plot(
-            [m.timestamp for m in self.vessel2.track],
-            [m.COG for m in self.vessel2.track],color=v2color
-        )[0]
+        # v1cso = ax4.plot(
+        #     [m.timestamp for m in self.vessel1.track],
+        #     [m.COG for m in self.vessel1.track],color=v1color
+        # )[0]
+        # v2cso = ax4.plot(
+        #     [m.timestamp for m in self.vessel2.track],
+        #     [m.COG for m in self.vessel2.track],color=v2color
+        # )[0]
         v1csp = ax4.scatter(
             [m.timestamp for m in self.vessel1.track],
             [m.COG for m in self.vessel1.track],color=v1color,marker="x"
@@ -459,7 +459,7 @@ class TrajectoryMatcher:
         ax4.set_xlabel("Timetamp [ms]")
         ax4.set_ylabel("Course over Ground [deg]")
         ax4.legend(
-            [(v1cp,v1cs),(v2cp,v2cs),(v1cso,v1csp),(v2cso,v2csp)],
+            [(v1cp,v1cs),(v2cp,v2cs),(v1csp),(v2csp)],
             [
                 f"Vessel {self.vessel1.mmsi}", 
                 f"Vessel {self.vessel2.mmsi}",
