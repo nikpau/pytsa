@@ -581,7 +581,7 @@ class TargetVessel:
         pathlen = scipy.integrate.quad(pl_int,lower,upper)[0]
         
         return s, s_prime, pl_int, pathlen
-    
+
 class SearchAgent:
     """
     Class searching for target ships
@@ -636,7 +636,7 @@ class SearchAgent:
         
         # Maximum temporal deviation of target
         # ships from provided time in `init()`
-        self.time_delta = 10
+        self.time_delta = 30 # in minutes
         
         # Search radius in [°] around agent
         self.search_radius = search_radius
@@ -888,9 +888,9 @@ class SearchAgent:
                 v = targets[mmsi]
                 v.track.append(msg)
 
-        return self._post_filter(targets,tpos)
+        return self._cleanup_targets(targets,tpos)
 
-    def _post_filter(self, 
+    def _cleanup_targets(self, 
             targets: dict[int,TargetVessel], tpos: TimePosition) -> List[TargetVessel]:
         """
         Remove all vessels that have only a single
@@ -899,11 +899,10 @@ class SearchAgent:
         
         Check for too-slow vessels
         
-        
-        
         """
         for mmsi, target_ship in list(targets.items()):
-            if (len(target_ship.track) < 2 or not 
+            # Spline interpolation needs at least 3 points
+            if (len(target_ship.track) < 3 or not
                 (target_ship.track[0].timestamp < 
                 tpos.timestamp < 
                 target_ship.track[-1].timestamp) or
