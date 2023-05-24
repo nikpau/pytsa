@@ -138,8 +138,6 @@ class TargetVessel:
         self.ts = ts
         self.mmsi = mmsi 
         self.track = track
-        self._fill_rot()
-        self._ts_to_unix()
     
     def construct_splines(self) -> None:
         """
@@ -232,7 +230,7 @@ class TargetVessel:
         return preds.T
 
 
-    def _fill_rot(self) -> None:
+    def fill_rot(self) -> None:
         """
         Fill out missing rotation data and first 
         derivative of roatation by inferring it from 
@@ -261,7 +259,7 @@ class TargetVessel:
         self.lower = self.track[0]
         self.upper = self.track[-1]
 
-    def _ts_to_unix(self) -> None:
+    def ts_to_unix(self) -> None:
         """
         Convert the vessel's timestamp for 
         each track element to unix time.
