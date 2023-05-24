@@ -211,6 +211,9 @@ class TargetVessel:
             raise OutofTimeBoundsError(
                 "End timestamp is after the track's last timestamp."
             )
+        
+        # Convert interval from seconds to milliseconds
+        interval = interval * 1000
 
         # Create a list of timestamps between the start and end
         # timestamps, with the given interval
