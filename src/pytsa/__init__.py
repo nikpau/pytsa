@@ -1,4 +1,4 @@
-from .targetship import SearchAgent, TimePosition
+from .search_agent import SearchAgent, TimePosition
 from .structs import LatLonBoundingBox, UTMBoundingBox
 
 __version__ = "1.2.0"
