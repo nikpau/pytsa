@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from datetime import datetime
 from typing import Union, List
+from matplotlib import pyplot as plt
 
 import numpy as np
 import pandas as pd
@@ -113,8 +114,11 @@ class AISMessage:
         """
         Handles the Rate of Turn (ROT) value
         """
-        try: rot = float(rot) 
-        except: return None
+        try: 
+            rot = float(rot) 
+        except: 
+            return None
+        
         sign = np.sign(rot)
         if abs(rot) == 127 or abs(rot) == 128:
             return None
@@ -235,12 +239,12 @@ class TargetVessel:
             # Fill out missing ROT data
             if msg.ROT is None:
                 num = self.track[idx].COG - self.track[idx-1].COG 
-                den = (self.track[idx].timestamp - self.track[idx-1].timestamp).seconds()*60
+                den = (self.track[idx].timestamp - self.track[idx-1].timestamp).seconds*60
                 self.track[idx].ROT = num/den
 
             # Calculate first derivative of ROT
             num = self.track[idx+1].ROT - self.track[idx].ROT
-            den = (self.track[idx+1].timestamp - self.track[idx].timestamp).seconds()*60
+            den = (self.track[idx+1].timestamp - self.track[idx].timestamp).seconds*60
             self.track[idx].dROT = num/den
     
     def _find_shell(self) -> None:
@@ -268,6 +272,8 @@ class TrajectoryMatcher:
     def __init__(self, vessel1: TargetVessel, vessel2: TargetVessel) -> None:
         self.vessel1 = vessel1
         self.vessel2 = vessel2
+        self._start()
+        self._end()
     
     def _start(self) -> None:
         """
@@ -299,7 +305,155 @@ class TrajectoryMatcher:
         obs_vessel2 = self.vessel2.observe_interval(
             self.start, self.end, interval
         )
+
+        self.obs_vessel1 = obs_vessel1
+        self.obs_vessel2 = obs_vessel2
+        
         return obs_vessel1, obs_vessel2
+
+    def plot(self, interval: int) -> None:
+        """
+        Plot the trajectories of both vessels
+        between the start and end points, with the
+        given interval in [seconds].
+        """
+
+        # Check if obs_vessel1 and obs_vessel2 are defined
+        try:
+            obs_vessel1 = self.obs_vessel1
+            obs_vessel2 = self.obs_vessel2
+        except AttributeError:
+            obs_vessel1, obs_vessel2 = self.observe_interval(interval)
+
+        # Plot trajectories and metrics
+        f, (ax1,ax2,ax3,ax4) = plt.subplots(2,2, figsize=(10,10))
+
+        # Original timestamps for both vessels
+
+        # Plot trajectories in easting-northing space
+        v1p = ax1.plot(obs_vessel1[:,1], obs_vessel1[:,0])
+        v2p = ax1.plot(obs_vessel2[:,1], obs_vessel2[:,0])
+        v1s = ax1.scatter(obs_vessel1[:,1], obs_vessel1[:,0])
+        v2s = ax1.scatter(obs_vessel2[:,1], obs_vessel2[:,0])
+        ax1.set_title("Trajectories")
+        ax1.set_xlabel("Easting [m]")
+        ax1.set_ylabel("Northing [m]")
+        ax1.legend(
+            [(v1p,v1s),(v2p,v2s)],
+            [f"Vessel {self.vessel1.mmsi}", f"Vessel {self.vessel2.mmsi}"]
+        )
+
+        # Plot easting in time-space
+        v1ep = ax2.plot(obs_vessel1[:,6],obs_vessel1[:,1])
+        v2ep = ax2.scatter(obs_vessel1[:,6],obs_vessel1[:,1])
+        v1es = ax2.plot(obs_vessel2[:,6],obs_vessel2[:,1])
+        v2es = ax2.scatter(obs_vessel2[:,6],obs_vessel2[:,1])
+
+        # Original trajectories for both vessels
+        v1eso = ax2.plot(
+            [m.timestamp for m in self.vessel1.track],
+            [m.easting for m in self.vessel1.track]
+        )
+        v2eso = ax2.plot(
+            [m.timestamp for m in self.vessel2.track],
+            [m.easting for m in self.vessel2.track]
+        )
+        v1esp = ax2.scatter(
+            [m.timestamp for m in self.vessel1.track],
+            [m.easting for m in self.vessel1.track]
+        )
+        v2esp = ax2.scatter(
+            [m.timestamp for m in self.vessel2.track],
+            [m.easting for m in self.vessel2.track]
+        )
+        ax2.set_title("Easting")
+        ax2.set_xlabel("Timetamp [ms]")
+        ax2.set_ylabel("Easting [m]")
+        ax2.legend(
+            [(v1ep,v1es),(v2ep,v2es),(v1eso,v1esp),(v2eso,v2esp)],
+            [
+                f"Vessel {self.vessel1.mmsi}", 
+                f"Vessel {self.vessel2.mmsi}",
+                f"Vessel {self.vessel1.mmsi} raw data", 
+                f"Vessel {self.vessel2.mmsi} raw data"
+            ]
+        )
+
+        # Plot northing in time-space
+        v1np = ax3.plot(obs_vessel1[:,6],obs_vessel1[:,0])
+        v2np = ax3.scatter(obs_vessel1[:,6],obs_vessel1[:,0])
+        v1ns = ax3.plot(obs_vessel2[:,6],obs_vessel2[:,0])
+        v2ns = ax3.scatter(obs_vessel2[:,6],obs_vessel2[:,0])
+
+        # Original trajectories for both vessels
+        v1nso = ax2.plot(
+            [m.timestamp for m in self.vessel1.track],
+            [m.northing for m in self.vessel1.track]
+        )
+        v2nso = ax2.plot(
+            [m.timestamp for m in self.vessel2.track],
+            [m.northing for m in self.vessel2.track]
+        )
+        v1nsp = ax2.scatter(
+            [m.timestamp for m in self.vessel1.track],
+            [m.northing for m in self.vessel1.track]
+        )
+        v2nsp = ax2.scatter(
+            [m.timestamp for m in self.vessel2.track],
+            [m.northing for m in self.vessel2.track]
+        )
+        ax3.set_title("Nothing")
+        ax3.set_xlabel("Timetamp [ms]")
+        ax3.set_ylabel("Nothing [m]")
+        ax3.legend(
+            [(v1np,v1ns),(v2np,v2ns),(v1nso,v1nsp),(v2nso,v2nsp)],
+            [
+                f"Vessel {self.vessel1.mmsi}", 
+                f"Vessel {self.vessel2.mmsi}",
+                f"Vessel {self.vessel1.mmsi} raw data",
+                f"Vessel {self.vessel2.mmsi} raw data"
+            ]
+        )
+        
+        # Plot COG in time-space
+        v1cp = ax4.plot(obs_vessel1[:,6],obs_vessel1[:,2])
+        v2cp = ax4.scatter(obs_vessel1[:,6],obs_vessel1[:,2])
+        v1cs = ax4.plot(obs_vessel2[:,6],obs_vessel2[:,2])
+        v2cs = ax4.scatter(obs_vessel2[:,6],obs_vessel2[:,2])
+
+        # Original trajectories for both vessels
+        v1cso = ax2.plot(
+            [m.timestamp for m in self.vessel1.track],
+            [m.cog for m in self.vessel1.track]
+        )
+        v2cso = ax2.plot(
+            [m.timestamp for m in self.vessel2.track],
+            [m.cog for m in self.vessel2.track]
+        )
+        v1csp = ax2.scatter(
+            [m.timestamp for m in self.vessel1.track],
+            [m.cog for m in self.vessel1.track]
+        )
+        v2csp = ax2.scatter(
+            [m.timestamp for m in self.vessel2.track],
+            [m.cog for m in self.vessel2.track]
+        )
+
+        ax4.set_title("Course over Ground")
+        ax4.set_xlabel("Timetamp [ms]")
+        ax4.set_ylabel("Course over Ground [deg]")
+        ax4.legend(
+            [(v1cp,v1cs),(v2cp,v2cs),(v1cso,v1csp),(v2cso,v2csp)],
+            [
+                f"Vessel {self.vessel1.mmsi}", 
+                f"Vessel {self.vessel2.mmsi}",
+                f"Vessel {self.vessel1.mmsi} raw data",
+                f"Vessel {self.vessel2.mmsi} raw data"
+            ]
+        )
+        plt.suptitle("Trajectories")
+        plt.tight_layout()
+        plt.show()
         
 
 
