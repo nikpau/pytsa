@@ -237,7 +237,7 @@ class TargetVessel:
         the previous and next AIS messages' headings.
         """
         for idx, msg in enumerate(self.track):
-            if idx == 0 or idx == len(self.track)-1:
+            if idx == 0:
                 continue
             # Fill out missing ROT data
             if msg.ROT is None:
