@@ -332,7 +332,7 @@ class TrajectoryMatcher:
             obs_vessel1, obs_vessel2 = self.observe_interval(interval)
 
         # Plot trajectories and metrics
-        f, (ax1,ax2,ax3,ax4) = plt.subplots(2,2, figsize=(10,10))
+        f, ((ax1,ax2),(ax3,ax4)) = plt.subplots(2,2, figsize=(10,10))
 
         # Original timestamps for both vessels
 
