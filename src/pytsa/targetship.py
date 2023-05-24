@@ -245,7 +245,7 @@ class TargetVessel:
                 num = self.track[idx].COG - self.track[idx-1].COG 
                 den = (self.track[idx].timestamp - self.track[idx-1].timestamp).seconds*60
                 if den == 0:
-                    continue
+                    msg.ROT = 0.0
                 else:
                     self.track[idx].ROT = num/den
 
@@ -256,7 +256,7 @@ class TargetVessel:
             num = self.track[idx+1].ROT - self.track[idx].ROT
             den = (self.track[idx+1].timestamp - self.track[idx].timestamp).seconds*60
             if den == 0:
-                continue
+                msg.ROT = 0.0
             else:
                 self.track[idx].dROT = num/den
     
