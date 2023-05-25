@@ -1,24 +1,15 @@
 from __future__ import annotations
 from dataclasses import dataclass
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from threading import Thread
 from typing import Callable, List, Tuple, Union
 from .cell_manager import NOTDETERMINED, LatLonCellManager, UTMCellManager
-import warnings
 
-import ciso8601
 import numpy as np
 import pandas as pd
-from scipy.interpolate import UnivariateSpline
-import scipy.linalg
-import scipy.optimize
-from matplotlib import pyplot as plt
-from scipy.sparse import csc_matrix
-from scipy.sparse.linalg import spilu
 from scipy.spatial import cKDTree
 import utm
-import warnings
 
 from .logger import Loader, logger
 from .structs import (
@@ -27,7 +18,7 @@ from .structs import (
     OUTOFBOUNDS,SUB_TO_ADJ, DataColumns, 
     UTMBoundingBox, UTMCell
 )
-from .targetship import TargetVessel, AISMessage
+from .targetship import TargetVessel, AISMessage, SplineAttachmentError
 
 # Exceptions
 class FileLoadingError(Exception):
@@ -186,11 +177,15 @@ class SearchAgent:
         """
         Interpolate all target ship tracks
         """
-        for tgt in tgts:
-            tgt.fill_rot() # Fill rate of turn if not in data
+        for i,tgt in enumerate(tgts):
+            tgt.fill_rot() # Calculate missing 'rate of turn' values via COG
             tgt.find_shell() # Find shell (start/end of traj) of target ship
             tgt.ts_to_unix() # Convert timestamps to unix
-            tgt.construct_splines() # Construct splines
+            try:
+                tgt.construct_splines() # Construct splines
+            except SplineAttachmentError as e:
+                logger.warn(e)
+                del tgts[i]
         return tgts
 
     def _load_cell_data(self, cell: Cell) -> pd.DataFrame:
@@ -310,7 +305,7 @@ class SearchAgent:
         # The conversion to degrees is only accurate at the equator.
         # Everywhere else, the distances get smaller as lines of 
         # Longitude are not parallel. Therefore, 
-         # this is a convervative estimate.         
+        # this is a conservative estimate.         
         search_radius = (nm2m(self.search_radius) if self._utm 
                          else self.search_radius/60) # Convert to degrees
         d, indices = tree.query(

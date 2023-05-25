@@ -36,6 +36,9 @@ PI = np.pi
 class OutofTimeBoundsError(Exception):
     pass
 
+class SplineAttachmentError(Exception):
+    pass
+
 
 class TrackSplines:
     """
@@ -144,7 +147,12 @@ class TargetVessel:
         """
         Construct splines for the target vessel
         """
-        self.splines = TrackSplines(self.track)
+        try:
+            self.splines = TrackSplines(self.track)
+        except Exception as e:
+            raise SplineAttachmentError(
+                "Could not attach splines to the target vessel."
+            ) from e
 
     def observe_at_query(self) -> np.ndarray:
         """
@@ -159,7 +167,6 @@ class TargetVessel:
         from univariate splines for the timestamp, 
         the object was initialized with.
 
-        Inferred variables start with "i_".
         """
         # Convert query timestamp to unix time
         ts = self.ts.timestamp()
