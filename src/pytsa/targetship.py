@@ -489,7 +489,7 @@ class TrajectoryMatcher:
         else:
             savepath = path
         plt.savefig(
-            f"{path}/trajectories_{self.vessel1.mmsi}_{self.vessel2.mmsi}.png",
+            f"{savepath}/trajectories_{self.vessel1.mmsi}_{self.vessel2.mmsi}.png",
             dpi=300
         )
         plt.close()
