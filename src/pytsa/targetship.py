@@ -317,7 +317,7 @@ class TrajectoryMatcher:
         else:
             self.end = self.vessel1.upper.timestamp
 
-    def observe_interval(self,interval: int) -> tuple[np.ndarray, np.ndarray]:
+    def observe_interval(self,interval: int) -> TrajectoryMatcher:
         """
         Retruns the trajectories of both vessels
         between the start and end points, with the
@@ -333,7 +333,7 @@ class TrajectoryMatcher:
         self.obs_vessel1 = obs_vessel1
         self.obs_vessel2 = obs_vessel2
         
-        return obs_vessel1, obs_vessel2
+        return self
 
     def plot(self, every: int = 10, path: str = None) -> None:
         """
