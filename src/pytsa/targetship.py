@@ -178,7 +178,9 @@ class TargetVessel:
         return np.array([
             self.splines.spl_northing(ts),
             self.splines.spl_easting(ts),
-            self.splines.spl_COG(ts),
+            # Take the modulo 360 to ensure that the
+            # course over ground is in the interval [0,360]
+            self.splines.spl_COG(ts) % 360,
             self.splines.spl_SOG(ts),
             self.splines.spl_ROT(ts),
             self.splines.spl_dROT(ts),
@@ -233,7 +235,9 @@ class TargetVessel:
         preds: np.ndarray = np.array([
             self.splines.spl_northing(timestamps),
             self.splines.spl_easting(timestamps),
-            self.splines.spl_COG(timestamps),
+            # Take the modulo 360 of the COG to get the
+            # heading to be between 0 and 360 degrees
+            self.splines.spl_COG(timestamps) % 360,
             self.splines.spl_SOG(timestamps),
             self.splines.spl_ROT(timestamps),
             self.splines.spl_dROT(timestamps),
