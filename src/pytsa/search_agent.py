@@ -18,7 +18,7 @@ from .structs import (
     OUTOFBOUNDS,SUB_TO_ADJ, DataColumns, 
     UTMBoundingBox, UTMCell
 )
-from .targetship import TargetVessel, AISMessage, SplineAttachmentError
+from .targetship import TargetVessel, AISMessage, InterpolationError
 
 # Exceptions
 class FileLoadingError(Exception):
@@ -182,8 +182,8 @@ class SearchAgent:
             tgt.find_shell() # Find shell (start/end of traj) of target ship
             tgt.ts_to_unix() # Convert timestamps to unix
             try:
-                tgt.construct_splines() # Construct splines
-            except SplineAttachmentError as e:
+                tgt.interpolate() # Construct splines
+            except InterpolationError as e:
                 logger.warn(e)
                 del tgts[i]
         return tgts
@@ -360,21 +360,28 @@ class SearchAgent:
     def _cleanup_targets(self, 
             targets: dict[int,TargetVessel], tpos: TimePosition) -> List[TargetVessel]:
         """
-        Remove all vessels that have only a single
-        observation or whose track lies outside
-        the queried timestamp. 
+        Flag all vessels with less than 4 points in their track for linear interpolation.
         
-        Check for too-slow vessels
+        
+        Also remove vessels whose track lies outside
+        the queried timestamp. 
         
         """
         for mmsi, target_ship in list(targets.items()):
-            # Spline interpolation needs at least 4 points
-            if (len(target_ship.track) < 4 or not
-                (target_ship.track[0].timestamp < 
-                tpos.timestamp < 
-                target_ship.track[-1].timestamp) or
-                any(v.SOG < .5 for v in target_ship.track)):
+            # A Track needs at least 2 points
+            if len(target_ship.track) < 2:
                 del targets[mmsi]
+                continue
+            elif not (
+                target_ship.track[0].timestamp < 
+                tpos.timestamp < 
+                target_ship.track[-1].timestamp):
+                del targets[mmsi]
+                continue
+            # Spline interpolation needs at least 4 points
+            if len(target_ship.track) < 4:
+                target_ship.lininterp = True
+
         return [ship for ship in targets.values()]
 
     def _time_filter(self, df: pd.DataFrame, date: datetime, delta: int) -> pd.DataFrame:

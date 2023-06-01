@@ -17,7 +17,7 @@ import pandas as pd
 import utm
 from matplotlib import pyplot as plt
 from matplotlib.gridspec import GridSpec
-from scipy.interpolate import UnivariateSpline
+from scipy.interpolate import UnivariateSpline, interp1d
 
 # Settings for numerical integration
 Q_SETTINGS = dict(epsabs=1e-13,epsrel=1e-13,limit=500)
@@ -36,7 +36,7 @@ PI = np.pi
 class OutofTimeBoundsError(Exception):
     pass
 
-class SplineAttachmentError(Exception):
+class InterpolationError(Exception):
     pass
 
 
@@ -68,23 +68,61 @@ class TrackSplines:
         """
         timestamps = [msg.timestamp for msg in self.track]
 
-        self.spl_northing = UnivariateSpline(
+        self.northing = UnivariateSpline(
             timestamps, [msg.northing for msg in self.track]
         )
-        self.spl_easting = UnivariateSpline(
+        self.easting = UnivariateSpline(
             timestamps, [msg.easting for msg in self.track]
         )
-        self.spl_COG = UnivariateSpline(
+        self.COG = UnivariateSpline(
             timestamps, [msg.COG for msg in self.track]
         )
-        self.spl_SOG = UnivariateSpline(
+        self.SOG = UnivariateSpline(
             timestamps, [msg.SOG for msg in self.track]
         )
-        self.spl_ROT = UnivariateSpline(
+        self.ROT = UnivariateSpline(
             timestamps, [msg.ROT for msg in self.track]
         )
-        self.spl_dROT = UnivariateSpline(
+        self.dROT = UnivariateSpline(
             timestamps, [msg.dROT for msg in self.track]
+        )
+
+class TrackLinear:
+    """
+    Linear interpolation of a given AIS track.
+    """
+    def __init__(self, track: List[AISMessage]) -> None:
+        self.track = track
+        self._attach_linear()
+
+    def _attach_linear(self) -> None:
+        """
+        Perform linear interpolation on the
+        AIS track and attach the results to
+        the class as attributes.
+        """
+        timestamps = [msg.timestamp for msg in self.track]
+
+        self.northing = interp1d(
+            timestamps, [msg.northing for msg in self.track]
+        )
+        self.easting = interp1d(
+            timestamps, [msg.easting for msg in self.track]
+        )
+        self.COG = interp1d(
+            timestamps, [msg.COG for msg in self.track]
+        )
+        self.SOG = interp1d(
+            timestamps, [msg.SOG for msg in self.track]
+        )
+        self.ROT = interp1d(
+            timestamps, [msg.ROT for msg in self.track]
+        )
+        # Derivative of ROT is not available in linear interpolation
+        # as there are too few points to perform numerical differentiation.
+        # Instead, we set it to zero.
+        self.dROT = interp1d(
+            timestamps, [0.0 for _ in self.track]
         )
 
 
@@ -142,17 +180,21 @@ class TargetVessel:
         self.ts = ts
         self.mmsi = mmsi 
         self.track = track
+        self.lininterp = False # Linear interpolation flag
     
-    def construct_splines(self) -> None:
+    def interpolate(self) -> None:
         """
         Construct splines for the target vessel
         """
         try:
-            self.splines = TrackSplines(self.track)
+            if self.lininterp:
+                self.interpolation = TrackLinear(self.track)
+            else:
+                self.interpolation = TrackSplines(self.track)
         except Exception as e:
-            raise SplineAttachmentError(
-                "Could not attach splines to the target vessel."
-            ) from e
+            raise InterpolationError(
+                f"Could not interpolate the target vessel trajectory:\n{e}."
+            )
 
     def observe_at_query(self) -> np.ndarray:
         """
@@ -176,14 +218,14 @@ class TargetVessel:
         # Returns a 1x6 array:
         # [northing, easting, COG, SOG, ROT, dROT]
         return np.array([
-            self.splines.spl_northing(ts),
-            self.splines.spl_easting(ts),
+            self.interpolation.northing(ts),
+            self.interpolation.easting(ts),
             # Take the modulo 360 to ensure that the
             # course over ground is in the interval [0,360]
-            self.splines.spl_COG(ts) % 360,
-            self.splines.spl_SOG(ts),
-            self.splines.spl_ROT(ts),
-            self.splines.spl_dROT(ts),
+            self.interpolation.COG(ts) % 360,
+            self.interpolation.SOG(ts),
+            self.interpolation.ROT(ts),
+            self.interpolation.dROT(ts),
         ])
 
     def observe_interval(
@@ -233,14 +275,14 @@ class TargetVessel:
         # Returns a Nx7 array:
         # [northing, easting, COG, SOG, ROT, dROT, timestamp]
         preds: np.ndarray = np.array([
-            self.splines.spl_northing(timestamps),
-            self.splines.spl_easting(timestamps),
+            self.interpolation.northing(timestamps),
+            self.interpolation.easting(timestamps),
             # Take the modulo 360 of the COG to get the
             # heading to be between 0 and 360 degrees
-            self.splines.spl_COG(timestamps) % 360,
-            self.splines.spl_SOG(timestamps),
-            self.splines.spl_ROT(timestamps),
-            self.splines.spl_dROT(timestamps),
+            self.interpolation.COG(timestamps) % 360,
+            self.interpolation.SOG(timestamps),
+            self.interpolation.ROT(timestamps),
+            self.interpolation.dROT(timestamps),
             timestamps
         ])
         return preds.T
