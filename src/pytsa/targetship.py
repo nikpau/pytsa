@@ -220,7 +220,7 @@ class TargetVessel:
             )
         
         # Convert interval from seconds to milliseconds
-        interval = interval * 1000
+        #interval = interval * 1000
 
         # Create a list of timestamps between the start and end
         # timestamps, with the given interval
@@ -296,8 +296,12 @@ class TrajectoryMatcher:
     def __init__(self, vessel1: TargetVessel, vessel2: TargetVessel) -> None:
         self.vessel1 = vessel1
         self.vessel2 = vessel2
-        self._start()
-        self._end()
+        if self._disjoint():
+            self.disjoint_trajectories = True
+        else:
+            self._start()
+            self._end()
+            self.disjoint_trajectories = False
     
     def _start(self) -> None:
         """
@@ -316,6 +320,15 @@ class TrajectoryMatcher:
             self.end = self.vessel2.upper.timestamp
         else:
             self.end = self.vessel1.upper.timestamp
+    
+    def _disjoint(self) -> bool:
+        """
+        Check if the trajectories are disjoint on the time axis
+        """
+        return (
+            (self.vessel1.upper.timestamp < self.vessel2.lower.timestamp) or
+            (self.vessel2.upper.timestamp < self.vessel1.lower.timestamp)
+        )
 
     def observe_interval(self,interval: int) -> TrajectoryMatcher:
         """
@@ -323,6 +336,11 @@ class TrajectoryMatcher:
         between the start and end points, with the
         given interval in [seconds].
         """
+        if self.disjoint_trajectories:
+            raise ValueError(
+                "Trajectories are disjoint on the time scale."
+            )
+        
         obs_vessel1 = self.vessel1.observe_interval(
             self.start, self.end, interval
         )
@@ -340,6 +358,7 @@ class TrajectoryMatcher:
         Plot the trajectories of both vessels
         between the start and end points.
         """
+        
         n = every
         v1color = "#d90429"
         v2color = "#2b2d42"
@@ -365,7 +384,7 @@ class TrajectoryMatcher:
         ax5 = fig.add_subplot(gs[3, 1])
 
         # Custom xticks for time
-        time_tick_locs = obs_vessel1[:,6]
+        time_tick_locs = obs_vessel1[:,6][::10]
         # Make list of HH:MM for each unix timestamp
         time_tick_labels = [datetime.fromtimestamp(t).strftime('%H:%M') for t in time_tick_locs]
 
