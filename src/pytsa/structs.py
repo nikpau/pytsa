@@ -25,7 +25,6 @@ class ShellError(Exception):
     pass
 
 
-@dataclass
 class LatLonBoundingBox:
     """
     Geographical frame 
@@ -33,11 +32,14 @@ class LatLonBoundingBox:
     and lateral bounds to a 
     geographical area
     """
-    LATMIN: Latitude
-    LATMAX: Latitude
-    LONMIN: Longitude
-    LONMAX: Longitude
-    __name__ = NONAME
+
+    def __init__(self,LATMIN,LATMAX,LONMIN,LONMAX, __name__ = NONAME) -> None:
+        self.LATMIN = LATMIN
+        self.LATMAX = LATMAX
+        self.LONMIN = LONMIN
+        self.LONMAX = LONMAX
+        self.__name__ = __name__
+        
     
     def __repr__(self) -> str:
         return (
@@ -68,19 +70,30 @@ class LatLonBoundingBox:
             zone_letter=zl
         )
 
-@dataclass
+
 class UTMBoundingBox:
     """
     Bounding box using 
     UTM coordinates
     """
-    min_easting: float
-    max_easting: float
-    min_northing: float
-    max_northing: float
-    zone_number: int
-    zone_letter: str
-    __name__ = NONAME
+
+    def __init__(
+        self,
+        min_easting: float,
+        max_easting: float,
+        min_northing: float,
+        max_northing: float,
+        zone_number: int,
+        zone_letter: str,
+        __name__ = NONAME
+    ) -> None:
+        self.min_easting = min_easting
+        self.max_easting = max_easting
+        self.min_northing = min_northing
+        self.max_northing = max_northing
+        self.zone_number = zone_number
+        self.zone_letter = zone_letter
+        self.__name__ = __name__
 
     def __repr__(self) -> str:
         return (
