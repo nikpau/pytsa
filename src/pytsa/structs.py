@@ -25,6 +25,7 @@ class ShellError(Exception):
     pass
 
 
+@dataclass
 class LatLonBoundingBox:
     """
     Geographical frame 
@@ -32,14 +33,10 @@ class LatLonBoundingBox:
     and lateral bounds to a 
     geographical area
     """
-
-    def __init__(self,LATMIN,LATMAX,LONMIN,LONMAX, name = NONAME) -> None:
-        self.LATMIN = LATMIN
-        self.LATMAX = LATMAX
-        self.LONMIN = LONMIN
-        self.LONMAX = LONMAX
-        self.name = name
-        
+    LATMIN: Latitude
+    LATMAX: Latitude
+    LONMIN: Longitude
+    LONMAX: Longitude
     
     def __repr__(self) -> str:
         return (
@@ -70,30 +67,18 @@ class LatLonBoundingBox:
             zone_letter=zl
         )
 
-
+@dataclass
 class UTMBoundingBox:
     """
     Bounding box using 
     UTM coordinates
     """
-
-    def __init__(
-        self,
-        min_easting: float,
-        max_easting: float,
-        min_northing: float,
-        max_northing: float,
-        zone_number: int,
-        zone_letter: str,
-        name = NONAME
-    ) -> None:
-        self.min_easting = min_easting
-        self.max_easting = max_easting
-        self.min_northing = min_northing
-        self.max_northing = max_northing
-        self.zone_number = zone_number
-        self.zone_letter = zone_letter
-        self.name = name
+    min_easting: float
+    max_easting: float
+    min_northing: float
+    max_northing: float
+    zone_number: int
+    zone_letter: str
 
     def __repr__(self) -> str:
         return (
@@ -129,38 +114,16 @@ class UTMBoundingBox:
 BoundingBox = Union[LatLonBoundingBox, UTMBoundingBox]
 
 # Cells for the grid ---------------------------------
-
+@dataclass
 class LatLonCell(LatLonBoundingBox):
-
-    def __init__(self, LATMIN, LATMAX, LONMIN, LONMAX, index, name=NONAME) -> None:
-        super().__init__(LATMIN, LATMAX, LONMIN, LONMAX, name)
-
-        self.index: int = index
+    index: int
     
     def __repr__(self) -> str:
         return f"{super().__repr__()}|idx={self.index}"
     
-
+@dataclass
 class UTMCell(UTMBoundingBox):
-
-    def __init__(
-        self,
-        min_easting: float,
-        max_easting: float,
-        min_northing: float,
-        max_northing: float,
-        zone_number: int,
-        zone_letter: str,
-        index: int,
-        name = NONAME
-    ) -> None:
-        super().__init__(
-            min_easting, max_easting,
-            min_northing, max_northing,
-            zone_number, zone_letter,
-            name
-        )
-        self.index: int = index
+    index: int
     
     def __repr__(self) -> str:
         return f"{super().__repr__()}|idx={self.index}"
