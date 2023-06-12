@@ -7,6 +7,8 @@ import ciso8601
 from typing import Dict, Tuple, List, Union
 import utm
 
+from pytsa.structs import NONAME
+
 Latitude  = float
 Longitude = float
 
@@ -129,16 +131,38 @@ class UTMBoundingBox:
 BoundingBox = Union[LatLonBoundingBox, UTMBoundingBox]
 
 # Cells for the grid ---------------------------------
-@dataclass
+
 class LatLonCell(LatLonBoundingBox):
-    index: int
+
+    def __init__(self, LATMIN, LATMAX, LONMIN, LONMAX, index, __name__=NONAME) -> None:
+        super().__init__(LATMIN, LATMAX, LONMIN, LONMAX, __name__)
+
+        self.index: int = index
     
     def __repr__(self) -> str:
         return f"{super().__repr__()}|idx={self.index}"
     
-@dataclass
+
 class UTMCell(UTMBoundingBox):
-    index: int
+
+    def __init__(
+        self,
+        min_easting: float,
+        max_easting: float,
+        min_northing: float,
+        max_northing: float,
+        zone_number: int,
+        zone_letter: str,
+        index: int,
+        __name__ = NONAME
+    ) -> None:
+        super().__init__(
+            min_easting, max_easting,
+            min_northing, max_northing,
+            zone_number, zone_letter,
+            __name__
+        )
+        self.index: int = index
     
     def __repr__(self) -> str:
         return f"{super().__repr__()}|idx={self.index}"
