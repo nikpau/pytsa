@@ -33,12 +33,12 @@ class LatLonBoundingBox:
     geographical area
     """
 
-    def __init__(self,LATMIN,LATMAX,LONMIN,LONMAX, __name__ = NONAME) -> None:
+    def __init__(self,LATMIN,LATMAX,LONMIN,LONMAX, name = NONAME) -> None:
         self.LATMIN = LATMIN
         self.LATMAX = LATMAX
         self.LONMIN = LONMIN
         self.LONMAX = LONMAX
-        self.__name__ = __name__
+        self.name = name
         
     
     def __repr__(self) -> str:
@@ -85,7 +85,7 @@ class UTMBoundingBox:
         max_northing: float,
         zone_number: int,
         zone_letter: str,
-        __name__ = NONAME
+        name = NONAME
     ) -> None:
         self.min_easting = min_easting
         self.max_easting = max_easting
@@ -93,7 +93,7 @@ class UTMBoundingBox:
         self.max_northing = max_northing
         self.zone_number = zone_number
         self.zone_letter = zone_letter
-        self.__name__ = __name__
+        self.name = name
 
     def __repr__(self) -> str:
         return (
@@ -132,8 +132,8 @@ BoundingBox = Union[LatLonBoundingBox, UTMBoundingBox]
 
 class LatLonCell(LatLonBoundingBox):
 
-    def __init__(self, LATMIN, LATMAX, LONMIN, LONMAX, index, __name__=NONAME) -> None:
-        super().__init__(LATMIN, LATMAX, LONMIN, LONMAX, __name__)
+    def __init__(self, LATMIN, LATMAX, LONMIN, LONMAX, index, name=NONAME) -> None:
+        super().__init__(LATMIN, LATMAX, LONMIN, LONMAX, name)
 
         self.index: int = index
     
@@ -152,13 +152,13 @@ class UTMCell(UTMBoundingBox):
         zone_number: int,
         zone_letter: str,
         index: int,
-        __name__ = NONAME
+        name = NONAME
     ) -> None:
         super().__init__(
             min_easting, max_easting,
             min_northing, max_northing,
             zone_number, zone_letter,
-            __name__
+            name
         )
         self.index: int = index
     
