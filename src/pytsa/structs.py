@@ -7,8 +7,6 @@ import ciso8601
 from typing import Dict, Tuple, List, Union
 import utm
 
-from pytsa.structs import NONAME
-
 Latitude  = float
 Longitude = float
 
