@@ -300,9 +300,9 @@ class TargetVessel:
             # Fill out missing ROT data
             if msg.ROT is None:
                 num = self.track[idx].COG - self.track[idx-1].COG 
-                den = (self.track[idx].timestamp - self.track[idx-1].timestamp).seconds*60
+                den = (self.track[idx].timestamp - self.track[idx-1].timestamp).seconds/60
                 if den == 0:
-                    msg.ROT = 0.0
+                    self.track[idx].ROT = 0.0
                 else:
                     self.track[idx].ROT = num/den
 
@@ -311,11 +311,46 @@ class TargetVessel:
                 continue
             # Calculate first derivative of ROT
             num = self.track[idx+1].ROT - self.track[idx].ROT
-            den = (self.track[idx+1].timestamp - self.track[idx].timestamp).seconds*60
+            den = (self.track[idx+1].timestamp - self.track[idx].timestamp).seconds/60 # Minutes
+            if den == 0:
+                self.track[idx].dROT = 0.0
+            else:
+                self.track[idx].dROT = num/den
+
+
+    def overwrite_rot(self) -> None:
+        """
+        Overwrite the ROT and dROT values with
+        the values from COG.
+
+        Note that the timestamps are already in
+        unix timestamps, so we need to divide by 60
+        to get the minutes.
+        """
+        for idx, msg in enumerate(self.track):
+            if idx == 0:
+                continue
+
+            num = self.track[idx].COG - self.track[idx-1].COG 
+            den = (self.track[idx].timestamp - self.track[idx-1].timestamp)/60 # Minutes
             if den == 0:
                 msg.ROT = 0.0
             else:
-                self.track[idx].dROT = num/den
+                msg.ROT = num/den
+
+        for idx, msg in enumerate(self.track):
+            if idx == 0 or idx == len(self.track)-1:
+                continue
+            # Calculate first derivative of ROT
+            num = self.track[idx+1].ROT - self.track[idx].ROT
+            den = (self.track[idx+1].timestamp - self.track[idx].timestamp)/60
+            if den == 0:
+                msg.dROT = 0.0
+            else:
+                msg.dROT = num/den
+
+        self.interpolate()
+
     
     def find_shell(self) -> None:
         """
@@ -424,10 +459,12 @@ class TrajectoryMatcher:
         gs = GridSpec(4, 2, figure=fig)
         
         ax1 = fig.add_subplot(gs[0:2, 0])
-        ax2 = fig.add_subplot(gs[0:2, 1])
-        ax3 = fig.add_subplot(gs[2:, 0])
-        ax4 = fig.add_subplot(gs[2, 1])
-        ax5 = fig.add_subplot(gs[3, 1])
+        ax2 = fig.add_subplot(gs[0, 1])
+        ax3 = fig.add_subplot(gs[1, 1])
+        ax4 = fig.add_subplot(gs[2, 0])
+        ax5 = fig.add_subplot(gs[3, 0])
+        ax6 = fig.add_subplot(gs[2, 1])
+        ax7 = fig.add_subplot(gs[3, 1])
 
         # Custom xticks for time
         time_tick_locs = obs_vessel1[:,6][::10]
@@ -444,7 +481,8 @@ class TrajectoryMatcher:
         ax1.set_ylabel("Northing [m]")
         ax1.legend(
             [(v1p,v1s),(v2p,v2s)],
-            [f"Vessel {self.vessel1.mmsi}", f"Vessel {self.vessel2.mmsi}"]
+            [f"Vessel {self.vessel1.mmsi}", f"Vessel {self.vessel2.mmsi}"],
+            fontsize=8
         )
 
         # Plot easting in time-space
@@ -466,7 +504,7 @@ class TrajectoryMatcher:
         ax2.set_xticklabels(time_tick_labels, rotation=45)
         
         ax2.set_title("Easting")
-        ax2.set_xlabel("Timetamp [ms]")
+        ax2.set_xlabel("Time")
         ax2.set_ylabel("Easting [m]")
         ax2.legend(
             [(v1ep,v1es),(v2ep,v2es),(v1esp),(v2esp)],
@@ -475,7 +513,8 @@ class TrajectoryMatcher:
                 f"Vessel {self.vessel2.mmsi}",
                 f"Vessel {self.vessel1.mmsi} raw data", 
                 f"Vessel {self.vessel2.mmsi} raw data"
-            ]
+            ],
+            fontsize=8
         )
 
         # Plot northing in time-space
@@ -496,8 +535,8 @@ class TrajectoryMatcher:
         ax3.set_xticks(time_tick_locs)
         ax3.set_xticklabels(time_tick_labels, rotation=45)
         
-        ax3.set_title("Nothing")
-        ax3.set_xlabel("Timetamp [ms]")
+        ax3.set_title("Northing")
+        ax3.set_xlabel("Time")
         ax3.set_ylabel("Nothing [m]")
         ax3.legend(
             [(v1np,v1ns),(v2np,v2ns),(v1nsp),(v2nsp)],
@@ -506,7 +545,8 @@ class TrajectoryMatcher:
                 f"Vessel {self.vessel2.mmsi}",
                 f"Vessel {self.vessel1.mmsi} raw data",
                 f"Vessel {self.vessel2.mmsi} raw data"
-            ]
+            ],
+            fontsize=8
         )
         
         # Plot COG in time-space
@@ -528,7 +568,7 @@ class TrajectoryMatcher:
         ax4.set_xticklabels(time_tick_labels, rotation=45)
 
         ax4.set_title("Course over Ground")
-        ax4.set_xlabel("Timetamp [ms]")
+        ax4.set_xlabel("Time")
         ax4.set_ylabel("Course over Ground [deg]")
         ax4.legend(
             [(v1cp,v1cs),(v2cp,v2cs),(v1csp),(v2csp)],
@@ -537,7 +577,8 @@ class TrajectoryMatcher:
                 f"Vessel {self.vessel2.mmsi}",
                 f"Vessel {self.vessel1.mmsi} raw data",
                 f"Vessel {self.vessel2.mmsi} raw data"
-            ]
+            ],
+            fontsize=8
         )
         
         # Plot SOG in time-space
@@ -559,7 +600,7 @@ class TrajectoryMatcher:
         ax5.set_xticklabels(time_tick_labels, rotation=45)
 
         ax5.set_title("Speed over Ground")
-        ax5.set_xlabel("Timetamp [ms]")
+        ax5.set_xlabel("Time")
         ax5.set_ylabel("Speed over Ground [knots]")
         ax5.legend(
             [(v1sp,v1ss),(v2sp,v2ss),(v1ssp),(v2ssp)],
@@ -568,7 +609,72 @@ class TrajectoryMatcher:
                 f"Vessel {self.vessel2.mmsi}",
                 f"Vessel {self.vessel1.mmsi} raw data",
                 f"Vessel {self.vessel2.mmsi} raw data"
-            ]
+            ],
+            fontsize=8
+        )
+
+        # Plot ROT in time-space
+        v1rp = ax6.plot(obs_vessel1[:,6],obs_vessel1[:,4],color=v1color)[0]
+        v1rs = ax6.scatter(obs_vessel1[:,6][::n],obs_vessel1[:,4][::n],color=v1color)
+        v2rp = ax6.plot(obs_vessel2[:,6],obs_vessel2[:,4],color=v2color)[0]
+        v2rs = ax6.scatter(obs_vessel2[:,6][::n],obs_vessel2[:,4][::n],color=v2color)
+
+        # Original trajectories for both vessels
+        v1rsp = ax6.scatter(
+            [m.timestamp for m in self.vessel1.track],
+            [m.ROT for m in self.vessel1.track],color=v1color,marker="x"
+        )
+        v2rsp = ax6.scatter(
+            [m.timestamp for m in self.vessel2.track],
+            [m.ROT for m in self.vessel2.track],color=v2color,marker="x"
+        )
+        ax6.set_xticks(time_tick_locs)
+        ax6.set_xticklabels(time_tick_labels, rotation=45)
+
+        ax6.set_title("Rate of Turn")
+        ax6.set_xlabel("Time")
+        ax6.set_ylabel("Rate of Turn [deg/min]")
+        ax6.legend(
+            [(v1rp,v1rs),(v2rp,v2rs),(v1rsp),(v2rsp)],
+            [
+                f"Vessel {self.vessel1.mmsi}", 
+                f"Vessel {self.vessel2.mmsi}",
+                f"Vessel {self.vessel1.mmsi} raw data",
+                f"Vessel {self.vessel2.mmsi} raw data"
+            ],
+            fontsize=8
+        )
+
+        # Plot dROT in time-space
+        v1drp = ax7.plot(obs_vessel1[:,6],obs_vessel1[:,5],color=v1color)[0]
+        v1drs = ax7.scatter(obs_vessel1[:,6][::n],obs_vessel1[:,5][::n],color=v1color)
+        v2drp = ax7.plot(obs_vessel2[:,6],obs_vessel2[:,5],color=v2color)[0]
+        v2drs = ax7.scatter(obs_vessel2[:,6][::n],obs_vessel2[:,5][::n],color=v2color)
+
+        # Original trajectories for both vessels
+        v1drsp = ax7.scatter(
+            [m.timestamp for m in self.vessel1.track],
+            [m.dROT for m in self.vessel1.track],color=v1color,marker="x"
+        )
+        v2drsp = ax7.scatter(
+            [m.timestamp for m in self.vessel2.track],
+            [m.dROT for m in self.vessel2.track],color=v2color,marker="x"
+        )
+        ax7.set_xticks(time_tick_locs)
+        ax7.set_xticklabels(time_tick_labels, rotation=45)
+
+        ax7.set_title("Derivative of Rate of Turn")
+        ax7.set_xlabel("Time")
+        ax7.set_ylabel("Rate of Turn [$deg/min^2$]")
+        ax7.legend(
+            [(v1drp,v1drs),(v2drp,v2drs),(v1drsp),(v2drsp)],
+            [
+                f"Vessel {self.vessel1.mmsi}", 
+                f"Vessel {self.vessel2.mmsi}",
+                f"Vessel {self.vessel1.mmsi} raw data",
+                f"Vessel {self.vessel2.mmsi} raw data"
+            ],
+            fontsize=8
         )
         
         plt.suptitle("Trajectories")
