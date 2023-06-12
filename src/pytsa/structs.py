@@ -17,6 +17,10 @@ class _OUT_OF_BOUNDS_TYPE:
     pass
 OUTOFBOUNDS = _OUT_OF_BOUNDS_TYPE()
 
+class NONAME_TYPE:
+    pass
+NONAME = NONAME_TYPE()
+
 class ShellError(Exception):
     pass
 
@@ -33,6 +37,7 @@ class LatLonBoundingBox:
     LATMAX: Latitude
     LONMIN: Longitude
     LONMAX: Longitude
+    __name__ = NONAME
     
     def __repr__(self) -> str:
         return (
@@ -75,6 +80,7 @@ class UTMBoundingBox:
     max_northing: float
     zone_number: int
     zone_letter: str
+    __name__ = NONAME
 
     def __repr__(self) -> str:
         return (
