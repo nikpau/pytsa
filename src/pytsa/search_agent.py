@@ -375,7 +375,8 @@ class SearchAgent:
             elif not (
                 target_ship.track[0].timestamp < 
                 tpos.timestamp < 
-                target_ship.track[-1].timestamp):
+                target_ship.track[-1].timestamp) or \
+                any(v.SOG < .5 for v in target_ship.track):
                 del targets[mmsi]
                 continue
             # Spline interpolation needs at least 4 points
