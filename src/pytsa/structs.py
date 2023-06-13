@@ -21,6 +21,10 @@ class NONAME_TYPE:
     pass
 NONAME = NONAME_TYPE()
 
+class NOINDEX_TYPE:
+    pass
+NOINDEX = NOINDEX_TYPE()
+
 class ShellError(Exception):
     pass
 
@@ -125,14 +129,14 @@ BoundingBox = Union[LatLonBoundingBox, UTMBoundingBox]
 # Cells for the grid ---------------------------------
 @dataclass
 class LatLonCell(LatLonBoundingBox):
-    index: int
+    index: int = NOINDEX
     
     def __repr__(self) -> str:
         return f"{super().__repr__()}|idx={self.index}"
     
 @dataclass
 class UTMCell(UTMBoundingBox):
-    index: int
+    index: int = NOINDEX
     
     def __repr__(self) -> str:
         return f"{super().__repr__()}|idx={self.index}"
