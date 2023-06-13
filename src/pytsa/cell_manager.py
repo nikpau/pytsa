@@ -8,7 +8,7 @@ from typing import Tuple, List
 import math
 from .logger import logger
 import numpy as np 
-import geopandas as gpd
+# import geopandas as gpd
 import matplotlib.pyplot as plt
 from pathlib import Path
 
@@ -240,6 +240,7 @@ class LatLonCellManager:
         else: return NOTDETERMINED # Vessel is exacty in the middle of the cell
         
     def plot_grid(self,*, f: plt.Figure = None, ax: plt.Axes = None) -> None:
+        return
         # Load north sea geometry
         if f is None and ax is None:
             f, ax = plt.subplots()
