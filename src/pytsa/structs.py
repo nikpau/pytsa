@@ -37,6 +37,7 @@ class LatLonBoundingBox:
     LATMAX: Latitude
     LONMIN: Longitude
     LONMAX: Longitude
+    name: str = NONAME
     
     def __repr__(self) -> str:
         return (
@@ -45,7 +46,11 @@ class LatLonBoundingBox:
             f"LATMAX={self.LATMAX:.3f},"
             f"LONMIN={self.LONMIN:.3f},"
             f"LONMAX={self.LONMAX:.3f})>"
-        )
+        )    
+        
+    def __str__(self) -> str:
+        return self.name
+
     
     def to_utm(self) -> UTMBoundingBox:
         """
@@ -79,7 +84,8 @@ class UTMBoundingBox:
     max_northing: float
     zone_number: int
     zone_letter: str
-
+    name: str = NONAME
+    
     def __repr__(self) -> str:
         return (
             "<UTMBoundingBox("
@@ -90,6 +96,9 @@ class UTMBoundingBox:
             f"zone_number={self.zone_number},"
             f"zone_letter={self.zone_letter})>"
         )
+        
+    def __str__(self) -> str:
+        return self.name
 
     def to_latlon(self) -> LatLonBoundingBox:
         """
