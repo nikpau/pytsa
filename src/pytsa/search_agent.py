@@ -213,6 +213,9 @@ class SearchAgent:
                     df = self.filter(df) # Apply custom filter
                     df[DataColumns.TIMESTAMP] = pd.to_datetime(
                         df[DataColumns.TIMESTAMP]).dt.tz_localize(None)
+                    df = df.drop_duplicates(
+                        subset=[DataColumns.TIMESTAMP,DataColumns.MMSI], keep="first"
+                    )
                     snippets.append(df.query(spatial_filter))
         except Exception as e:
             logger.error(f"Error while loading cell data: {e}")
