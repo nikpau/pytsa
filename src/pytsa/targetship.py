@@ -186,6 +186,13 @@ class TargetVessel:
         """
         Construct splines for the target vessel
         """
+        # Print out the entire track
+        print(
+            f"Target vessel track:\n\
+            {[[msg.ROT,msg.dROT] for msg in self.track]}"
+        )
+
+
         try:
             if self.lininterp:
                 self.interpolation = TrackLinear(self.track)
