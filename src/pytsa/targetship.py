@@ -137,7 +137,7 @@ class AISMessage:
     lon: Longitude
     COG: float # Course over ground [degrees]
     SOG: float # Speed over ground [knots]
-    ROT: float # Rate of turn [degrees/minute]
+    ROT: float = None # Rate of turn [degrees/minute]
     dROT: float = None # Change of ROT [degrees/minute²]
     _utm: bool = False
 

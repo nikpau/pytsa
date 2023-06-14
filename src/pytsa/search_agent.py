@@ -333,18 +333,16 @@ class SearchAgent:
         df = df.sort_values(by=DataColumns.TIMESTAMP)
         targets: dict[int,TargetVessel] = {}
         
-        for mmsi,ts,lat,lon,sog,cog,turn in zip(
+        for mmsi,ts,lat,lon,sog,cog in zip(
             df[DataColumns.MMSI],df[DataColumns.TIMESTAMP],
             df[DataColumns.LAT], df[DataColumns.LON],
-            df[DataColumns.SPEED],df[DataColumns.COURSE],
-            df[DataColumns.TURN]):
+            df[DataColumns.SPEED],df[DataColumns.COURSE]):
 
             msg = AISMessage(
                 sender=mmsi,
                 timestamp=ts.to_pydatetime(),
                 lat=lat,lon=lon,
                 COG=cog,SOG=sog,
-                ROT=turn,
                 _utm=self._utm
             )
             
