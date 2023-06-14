@@ -304,6 +304,7 @@ class TargetVessel:
         for idx, msg in enumerate(self.track):
             if idx == 0:
                 self.track[idx].ROT = 0.0
+                continue
             # Fill out missing ROT data
             if msg.ROT is None:
                 num = self.track[idx].COG - self.track[idx-1].COG 
@@ -316,6 +317,7 @@ class TargetVessel:
         for idx, msg in enumerate(self.track):
             if idx == 0 or idx == len(self.track)-1:
                 self.track[idx].dROT = 0.0
+                continue
             # Calculate first derivative of ROT
             num = self.track[idx+1].ROT - self.track[idx].ROT
             den = (self.track[idx+1].timestamp - self.track[idx].timestamp).seconds/60 # Minutes
