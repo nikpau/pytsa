@@ -66,7 +66,7 @@ class TrackSplines:
         AIS track and attach the results to
         the class as attributes.
         """
-        timestamps = [msg.timestamp for msg in self.track]
+        timestamps = [int(msg.timestamp) for msg in self.track]
 
         self.northing = CubicSpline(
             timestamps, [msg.northing for msg in self.track]
