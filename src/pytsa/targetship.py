@@ -68,32 +68,21 @@ class TrackSplines:
         """
         timestamps = [msg.timestamp for msg in self.track]
 
-        print("Calculating splines for northing...")
         self.northing = UnivariateSpline(
             timestamps, [msg.northing for msg in self.track]
         )
-
-        print("Calculating splines for easting...")
         self.easting = UnivariateSpline(
             timestamps, [msg.easting for msg in self.track]
         )
-
-        print("Calculating splines for COG...")
         self.COG = UnivariateSpline(
             timestamps, [msg.COG for msg in self.track]
         )
-
-        print("Calculating splines for SOG...")
         self.SOG = UnivariateSpline(
             timestamps, [msg.SOG for msg in self.track]
         )
-
-        print("Calculating splines for ROT...")
         self.ROT = UnivariateSpline(
             timestamps, [msg.ROT for msg in self.track]
         )
-
-        print("Calculating splines for dROT...")
         self.dROT = UnivariateSpline(
             timestamps, [msg.dROT for msg in self.track]
         )
