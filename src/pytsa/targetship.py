@@ -17,7 +17,7 @@ import pandas as pd
 import utm
 from matplotlib import pyplot as plt
 from matplotlib.gridspec import GridSpec
-from scipy.interpolate import UnivariateSpline, interp1d
+from scipy.interpolate import CubicSpline, interp1d
 
 # Settings for numerical integration
 Q_SETTINGS = dict(epsabs=1e-13,epsrel=1e-13,limit=500)
@@ -68,22 +68,22 @@ class TrackSplines:
         """
         timestamps = [msg.timestamp for msg in self.track]
 
-        self.northing = UnivariateSpline(
+        self.northing = CubicSpline(
             timestamps, [msg.northing for msg in self.track]
         )
-        self.easting = UnivariateSpline(
+        self.easting = CubicSpline(
             timestamps, [msg.easting for msg in self.track]
         )
-        self.COG = UnivariateSpline(
+        self.COG = CubicSpline(
             timestamps, [msg.COG for msg in self.track]
         )
-        self.SOG = UnivariateSpline(
+        self.SOG = CubicSpline(
             timestamps, [msg.SOG for msg in self.track]
         )
-        self.ROT = UnivariateSpline(
+        self.ROT = CubicSpline(
             timestamps, [msg.ROT for msg in self.track]
         )
-        self.dROT = UnivariateSpline(
+        self.dROT = CubicSpline(
             timestamps, [msg.dROT for msg in self.track]
         )
 
