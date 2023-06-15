@@ -132,7 +132,7 @@ class AISMessage:
     AIS Message object
     """
     sender: int
-    timestamp: datetime
+    timestamp: datetime | float
     lat: Latitude
     lon: Longitude
     COG: float # Course over ground [degrees]
@@ -376,15 +376,32 @@ class TrajectoryMatcher:
     Class for matching trajectories of two vessels
     """
 
-    def __init__(self, vessel1: TargetVessel, vessel2: TargetVessel) -> None:
+    def __init__(
+            self, 
+            vessel1: TargetVessel, 
+            vessel2: TargetVessel,
+            threshold: float = 20 # [min] Minimun overlap between trajectories
+            ) -> None:
         self.vessel1 = vessel1
         self.vessel2 = vessel2
+
         if self._disjoint():
             self.disjoint_trajectories = True
         else:
+            self.disjoint_trajectories = False
             self._start()
             self._end()
-            self.disjoint_trajectories = False
+
+        if self._overlapping(threshold):
+            self.overlapping_trajectories = True
+        else:
+            self.overlapping_trajectories = False
+
+    def _overlapping(self, threshold: int) -> bool:
+        """
+        Check if the trajectories overlap
+        """
+        return (self.end - self.start) > threshold * 60
     
     def _start(self) -> None:
         """
