@@ -181,6 +181,10 @@ class TargetVessel:
         self.mmsi = mmsi 
         self.track = track
         self.lininterp = False # Linear interpolation flag
+        
+        # Indicate if the interpolation function have 
+        # been attached to the object
+        self.interpolation = None
     
     def interpolate(self) -> None:
         """
@@ -210,6 +214,8 @@ class TargetVessel:
         the object was initialized with.
 
         """
+        assert self.interpolation is not None,\
+            "Interpolation has not been run. Call interpolate() first."
         # Convert query timestamp to unix time
         ts = self.ts.timestamp()
 
@@ -247,6 +253,8 @@ class TargetVessel:
         the given start and end timestamps, with the
         given interval in [seconds].
         """
+        assert self.interpolation is not None,\
+            "Interpolation has not been run. Call interpolate() first."
         # Convert query timestamps to unix time
         if isinstance(start, datetime):
             start = start.timestamp()
