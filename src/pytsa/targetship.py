@@ -373,7 +373,13 @@ class TargetVessel:
 
 class TrajectoryMatcher:
     """
-    Class for matching trajectories of two vessels
+    Class for matching trajectories of two vessels.
+
+    The trajectories are matched if they overlap
+    for a given threshold.
+
+    The trajectories are disjoint if they do not
+    overlap at all.
     """
 
     def __init__(
@@ -387,15 +393,15 @@ class TrajectoryMatcher:
 
         if self._disjoint():
             self.disjoint_trajectories = True
+            self.overlapping_trajectories = False
         else:
             self.disjoint_trajectories = False
             self._start()
             self._end()
-
-        if self._overlapping(threshold):
-            self.overlapping_trajectories = True
-        else:
-            self.overlapping_trajectories = False
+            if self._overlapping(threshold):
+                self.overlapping_trajectories = True
+            else:
+                self.overlapping_trajectories = False
 
     def _overlapping(self, threshold: int) -> bool:
         """
@@ -703,11 +709,21 @@ class TrajectoryMatcher:
             # Make directory if it does not exist
             if not os.path.exists("~/aisout/plots"):
                 os.makedirs("~/aisout/plots")
-            savepath = f"~/aisout/plots/trajectories_{self.vessel1.mmsi}_{self.vessel2.mmsi}.png"
+            savepath = f"~/aisout/plots/"
         else:
             savepath = path
+
+        fname = f"trajectories_{self.vessel1.mmsi}_{self.vessel2.mmsi}.png"
+
+        # Check if file exists and if so, append number to filename
+        if os.path.exists(f"{savepath}/{fname}"):
+            i = 1
+            while os.path.exists(f"{savepath}/{fname}"):
+                fname = f"trajectories_{self.vessel1.mmsi}_{self.vessel2.mmsi}_{i}.png"
+                i += 1
+
         plt.savefig(
-            f"{savepath}/trajectories_{self.vessel1.mmsi}_{self.vessel2.mmsi}.png",
+            f"{savepath}/{fname}",
             dpi=300
         )
         plt.close()
