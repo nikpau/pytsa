@@ -169,6 +169,63 @@ class AISMessage:
         
 
 class TargetVessel:
+    """
+    Central object for the pytsa package. It holds
+    a collection of functions for working with the 
+    AIS messages belonging to it.
+    
+    Attributes:
+        - ts: Timestamp for which to observe the vessel
+        - mmsi: Maritime Mobile Service Identity
+        - track: List of AIS messages belonging to the
+                target vessel
+                
+    Methods:
+        - interpolate(): Construct smoothed univariate splines
+                for northings, eastings, course over ground,
+                speed over ground, rate of turn and change of
+                rate of turn contained in the vessels' track.
+                
+                If the caller wants to use linear interpolation
+                instead of splines, the lininterp flag can be set
+                to True.
+                
+        - observe_at_query(): Returns the 6-tuple of [northing,
+                easting, COG, SOG, ROT, dROT] at the timestamp 
+                the object was initialized with.
+                The timestamp should lie within the
+                track's temporal bounds.
+                
+                Currently, there is no check 
+                for the timestamp being within the track's
+                temporal bounds, which can lead to errors.
+                If you want to use this function, please
+                make sure that the timestamp is within bounds.
+                
+                You can also pass a timestamp to the function
+                to observe the vessel at a different timestamp.
+                Please note that there is still no check for
+                the timestamp being within the track's bounds.
+                
+        - observe_interval(): Returns an array of 7-tuples of [northing,
+                easting, COG, SOG, ROT, dROT, timestamp] for 
+                the track between the given start and end timestamps,
+                with the given interval in [seconds].
+                
+        - fill_rot(): Fill out missing rotation data and first
+                derivative of rotation by inferring it from the
+                previous and next AIS messages' headings.
+        
+        - overwrite_rot(): Overwrite the ROT and dROT values with
+                the values from COG.
+        
+        - find_shell(): Find the two AIS messages encompassing
+                the objects' track elements and save them
+                as attributes.
+        
+        - ts_to_unix(): Convert the vessel's timestamp for
+                each track element to unix time.
+    """    
     
     def __init__(
         self,
@@ -200,7 +257,7 @@ class TargetVessel:
                 f"Could not interpolate the target vessel trajectory:\n{e}."
             )
 
-    def observe_at_query(self) -> np.ndarray:
+    def observe_at_query(self, time: datetime | str | None = None) -> np.ndarray:
         """
         Infers
             - Northing (meters),
@@ -217,7 +274,10 @@ class TargetVessel:
         assert self.interpolation is not None,\
             "Interpolation has not been run. Call interpolate() first."
         # Convert query timestamp to unix time
-        ts = self.ts.timestamp()
+        if time is not None:
+            ts = time.timestamp()
+        else:
+            ts = self.ts.timestamp()
 
         # Return the observed values from the splines
         # at the given timestamp
