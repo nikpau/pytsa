@@ -1,7 +1,7 @@
 from __future__ import annotations
-from dataclasses import dataclass
 
 from datetime import datetime
+from pathlib import Path
 from threading import Thread
 from typing import Callable, List, Tuple, Union
 from .cell_manager import NOTDETERMINED, LatLonCellManager, UTMCellManager
@@ -13,10 +13,10 @@ import utm
 
 from .logger import Loader, logger
 from .structs import (
-    BoundingBox, Cell, LatLonCell, Point,
+    BoundingBox, Cell, LatLonCell,
     Position, ShellError,TimePosition,
-    OUTOFBOUNDS,SUB_TO_ADJ, DataColumns, 
-    UTMBoundingBox, UTMCell
+    OUTOFBOUNDS,SUB_TO_ADJ, Msg12318Columns, 
+    Msg5Columns,UTMBoundingBox, UTMCell
 )
 from .targetship import TargetVessel, AISMessage, InterpolationError
 
@@ -47,21 +47,22 @@ class SearchAgent:
     
     def __init__(
         self, 
-        datapath: Union[str, List[str]],
+        msg12318file: Union[Path,List[Path]],
         frame: BoundingBox,
+        msg5file: Union[Path,List[Path]] = None,
         search_radius: float = 0.5, # in nautical miles
         max_tgt_ships: int = 50,
         n_cells: int = 144,
-        filter: Callable[[pd.DataFrame],pd.DataFrame] = lambda x: x,
-        v = False) -> None:
+        filter: Callable[[pd.DataFrame],pd.DataFrame] = lambda x: x
+        ) -> None:
        
         """ 
         frame: BoundingBox object setting the search space
                 for the taget ship extraction process.
                 AIS records outside this BoundingBox are 
                 not eligible for TargetShip construction.
-        datapath: path to (a) csv file(s) containing AIS messages.
-                Can be either a single file, or a list of several files.
+        msg12318file: path to a csv file containing AIS messages
+                    of type 1,2,3 and 18.
         search_radius: Radius around agent in which taget vessel 
                 search is rolled out
         n_cells: number of cells into which the spatial extent
@@ -73,11 +74,21 @@ class SearchAgent:
                 the identity function.
         """
 
-        if not isinstance(datapath,list):
-            self.datapath = [datapath]
+        if not isinstance(msg12318file,list):
+            self.msg12318files = [msg12318file]
         else:
-            self.datapath = datapath
-        
+            self.msg12318files = msg12318file
+
+        if msg5file is not None:
+            logger.info("Initializing SearchAgent with msg5file")
+            if not isinstance(msg5file,list):
+                self.msg5files = [msg5file]
+            else:
+                self.msg5files = msg5file
+        else:
+            logger.info("Initializing SearchAgent without msg5file")
+            self.msg5files = None
+
         # Spatial bounding box of current AIS message space
         self.FRAME = frame
 
@@ -131,6 +142,7 @@ class SearchAgent:
             
             # Load AIS Messages for specific cell
             self.cell_data = self._load_cell_data(self.cell)
+            self.msg5_data = self._load_msg5_data()
             self._is_initialized = True
             pos = f"{pos.lat:.3f}N, {pos.lon:.3f}E" if isinstance(tpos.position,Position)\
                   else f"{pos.easting:.3f}mE, {pos.northing:.3f}mN"
@@ -187,6 +199,22 @@ class SearchAgent:
                 logger.warn(e)
                 del tgts[i]
         return tgts
+    
+    def _load_msg5_data(self) -> pd.DataFrame:
+        """
+        Load AIS Messages from a given path or list of paths
+        and return only messages that fall inside given `cell`-bounds.
+        """
+        snippets = []
+        for file in self.msg5files:
+            msg5 = pd.read_csv(
+                file,usecols=
+                [Msg5Columns.MMSI,Msg5Columns.SHIPTYPE]
+            )
+            snippets.append(msg5)
+        msg5 = pd.concat(snippets)
+        msg5 = msg5[msg5[Msg12318Columns.MMSI].isin(self.cell_data[Msg12318Columns.MMSI])]
+        return msg5
 
     def _load_cell_data(self, cell: Cell) -> pd.DataFrame:
         """
@@ -201,22 +229,22 @@ class SearchAgent:
         if isinstance(cell,UTMCell):
             cell = cell.to_latlon()
         spatial_filter = (
-            f"{DataColumns.LON} > {cell.LONMIN} and "
-            f"{DataColumns.LON} < {cell.LONMAX} and "
-            f"{DataColumns.LAT} > {cell.LATMIN} and "
-            f"{DataColumns.LAT} < {cell.LATMAX}"
+            f"{Msg12318Columns.LON} > {cell.LONMIN} and "
+            f"{Msg12318Columns.LON} < {cell.LONMAX} and "
+            f"{Msg12318Columns.LAT} > {cell.LATMIN} and "
+            f"{Msg12318Columns.LAT} < {cell.LATMAX}"
         )
         try:
             with Loader(cell):
-                for file in self.datapath:
-                    df = pd.read_csv(file,sep=",")
-                    df = self.filter(df) # Apply custom filter
-                    df[DataColumns.TIMESTAMP] = pd.to_datetime(
-                        df[DataColumns.TIMESTAMP]).dt.tz_localize(None)
-                    df = df.drop_duplicates(
-                        subset=[DataColumns.TIMESTAMP,DataColumns.MMSI], keep="first"
+                for file in self.msg12318files:
+                    msg12318 = pd.read_csv(file,sep=",")
+                    msg12318 = self.filter(msg12318) # Apply custom filter
+                    msg12318[Msg12318Columns.TIMESTAMP] = pd.to_datetime(
+                        msg12318[Msg12318Columns.TIMESTAMP]).dt.tz_localize(None)
+                    msg12318 = msg12318.drop_duplicates(
+                        subset=[Msg12318Columns.TIMESTAMP,Msg12318Columns.MMSI], keep="first"
                     )
-                    snippets.append(df.query(spatial_filter))
+                    snippets.append(msg12318.query(spatial_filter))
         except Exception as e:
             logger.error(f"Error while loading cell data: {e}")
             raise FileLoadingError(e)
@@ -277,16 +305,31 @@ class SearchAgent:
         If the object was initialized with a UTMCellManager,
         the data is converted to UTM before building the tree.
         """
-        assert DataColumns.LAT in data and DataColumns.LON in data, \
+        assert Msg12318Columns.LAT in data and Msg12318Columns.LON in data, \
             "Input dataframe has no `lat` or `lon` columns"
         if isinstance(self.cell_manager,UTMCellManager):
             eastings, northings, *_ = utm.from_latlon(
-                data[DataColumns.LAT].values,
-                data[DataColumns.LON].values
+                data[Msg12318Columns.LAT].values,
+                data[Msg12318Columns.LON].values
                 )
             return cKDTree(np.column_stack((northings,eastings)))
         else:
-            return cKDTree(data[[DataColumns.LAT,DataColumns.LON]])
+            return cKDTree(data[[Msg12318Columns.LAT,Msg12318Columns.LON]])
+        
+    def _get_ship_type(self, mmsi: int) -> int:
+        """
+        Return the ship type of a given MMSI number.
+
+        If more than one ship type is found, the first
+        one is returned and a warning is logged.
+        """
+        st = self.msg5_data[self.msg5_data[Msg5Columns.MMSI] == mmsi]\
+            [Msg5Columns.SHIPTYPE].values[0]
+        if len(st) > 1:
+            logger.warning(
+                f"More than one ship type found for MMSI {mmsi}. "
+                f"Found {np.unique(st)}. Returning {st[0]}.")
+        return st[0]
 
     def _get_neighbors(self, tpos: TimePosition):
         """
@@ -330,13 +373,13 @@ class SearchAgent:
         The individual AIS Messages are sorted by date
         and are added to the respective TargetVessel's track attribute.
         """
-        df = df.sort_values(by=DataColumns.TIMESTAMP)
+        df = df.sort_values(by=Msg12318Columns.TIMESTAMP)
         targets: dict[int,TargetVessel] = {}
         
         for mmsi,ts,lat,lon,sog,cog in zip(
-            df[DataColumns.MMSI],df[DataColumns.TIMESTAMP],
-            df[DataColumns.LAT], df[DataColumns.LON],
-            df[DataColumns.SPEED],df[DataColumns.COURSE]):
+            df[Msg12318Columns.MMSI],df[Msg12318Columns.TIMESTAMP],
+            df[Msg12318Columns.LAT], df[Msg12318Columns.LON],
+            df[Msg12318Columns.SPEED],df[Msg12318Columns.COURSE]):
 
             msg = AISMessage(
                 sender=mmsi,
@@ -350,6 +393,7 @@ class SearchAgent:
                 targets[mmsi] = TargetVessel(
                     ts = tpos.timestamp,
                     mmsi=mmsi,
+                    ship_type=self._get_ship_type(mmsi),
                     track=[msg]
                 )
             else: 
@@ -392,11 +436,11 @@ class SearchAgent:
         rows whose `Timestamp` is not more than 
         `delta` minutes apart from imput `date`.
         """
-        assert DataColumns.TIMESTAMP in df, "No `timestamp` column found"
+        assert Msg12318Columns.TIMESTAMP in df, "No `timestamp` column found"
         date = pd.Timestamp(date, tz=None)
         dt = pd.Timedelta(delta, unit="minutes")
         mask = (
-            (df[DataColumns.TIMESTAMP] > (date-dt)) & 
-            (df[DataColumns.TIMESTAMP] < (date+dt))
+            (df[Msg12318Columns.TIMESTAMP] > (date-dt)) & 
+            (df[Msg12318Columns.TIMESTAMP] < (date+dt))
         )
         return df.loc[mask]

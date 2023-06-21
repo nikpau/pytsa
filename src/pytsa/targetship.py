@@ -13,11 +13,11 @@ from datetime import datetime
 from typing import List, Union
 
 import numpy as np
-import pandas as pd
 import utm
 from matplotlib import pyplot as plt
 from matplotlib.gridspec import GridSpec
 from scipy.interpolate import UnivariateSpline, interp1d
+from .structs import ShipType
 
 # Settings for numerical integration
 Q_SETTINGS = dict(epsabs=1e-13,epsrel=1e-13,limit=500)
@@ -27,6 +27,7 @@ Q_SETTINGS = dict(epsabs=1e-13,epsrel=1e-13,limit=500)
 # Type aliases
 Latitude = float
 Longitude = float
+MMSI = int
 
 # Constants
 PI = np.pi
@@ -131,7 +132,7 @@ class AISMessage:
     """
     AIS Message object
     """
-    sender: int
+    sender: MMSI
     timestamp: datetime | float
     lat: Latitude
     lon: Longitude
@@ -230,13 +231,15 @@ class TargetVessel:
     def __init__(
         self,
         ts: Union[str,datetime], 
-        mmsi: int, 
-        track: List[AISMessage]
+        mmsi: MMSI, 
+        track: List[AISMessage],
+        ship_type: ShipType = None,
         ) -> None:
         
         self.ts = ts
         self.mmsi = mmsi 
         self.track = track
+        self.ship_type = ship_type
         self.lininterp = False # Linear interpolation flag
         
         # Indicate if the interpolation function have 

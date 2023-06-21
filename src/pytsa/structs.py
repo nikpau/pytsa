@@ -225,10 +225,12 @@ class TimePosition:
             return Position(self.lat,self.lon)
 
 @dataclass
-class DataColumns:
+class Msg12318Columns:
     """
-    Data columns of the 
-    source file
+    Data columns for message 1,2,3 and 18
+    source files. If your decoded file features
+    different column names,
+    please change them here.
     """
     MMSI: str = "MMSI"
     LAT: str = "lat"
@@ -238,6 +240,20 @@ class DataColumns:
     SPEED: str = "speed"
     COURSE: str = "course"
     TURN: str = "turn"
+
+@dataclass
+class Msg5Columns:
+    """
+    Data columns for message 5
+    source files. 
+    If your decoded file features
+    different column names,
+    please change them here.
+    """
+    MMSI: str = "MMSI"
+    SHIPTYPE = "ship_type"
+    SHIPNAME = "shipname"
+    CALLSIGN = "callsign"
 
 @dataclass
 class AdjacentCells:
