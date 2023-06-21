@@ -1,5 +1,5 @@
 from .search_agent import SearchAgent, TimePosition, TargetVessel
-from .structs import LatLonBoundingBox, UTMBoundingBox
+from .structs import LatLonBoundingBox, UTMBoundingBox, ShipType
 from .targetship import TrajectoryMatcher
 
 __version__ = "2.0.1"

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import namedtuple
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 import ciso8601
 from typing import Dict, Tuple, List, Union
 import utm
@@ -28,6 +29,15 @@ NOINDEX = NOINDEX_TYPE()
 class ShellError(Exception):
     pass
 
+class ShipType(Enum):
+    """
+    Dataclass to store the type of vessel
+    as defined by the AIS standard.
+    """
+    PASSENGER = 60
+    CARGO = 70
+    TANKER = 80
+    OTHER = 90
 
 @dataclass
 class LatLonBoundingBox:
