@@ -83,7 +83,8 @@ class LatLonBoundingBox:
             min_northing=min_northing,
             max_northing=max_northing,
             zone_number=zn,
-            zone_letter=zl
+            zone_letter=zl,
+            name=self.name
         )
 
 @dataclass
@@ -131,7 +132,8 @@ class UTMBoundingBox:
             LATMIN=latmin,
             LATMAX=latmax,
             LONMIN=lonmin,
-            LONMAX=lonmax
+            LONMAX=lonmax,
+            name=self.name
         )
 # Bounding boxes ------------------------------------
 BoundingBox = Union[LatLonBoundingBox, UTMBoundingBox]
