@@ -327,7 +327,7 @@ class SearchAgent:
         st = self.msg5_data[self.msg5_data[Msg5Columns.MMSI] == mmsi]\
             [Msg5Columns.SHIPTYPE].values
         if isinstance(st,np.ndarray):
-            if len(st) > 1:
+            if st.size > 1:
                 logger.warning(
                     f"More than one ship type found for MMSI {mmsi}. "
                     f"Found {np.unique(st)}. Returning {st[0]}.")
