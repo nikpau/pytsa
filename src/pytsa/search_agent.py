@@ -214,7 +214,7 @@ class SearchAgent:
             )
             snippets.append(msg5)
         msg5 = pd.concat(snippets)
-        msg5 = msg5[msg5[Msg12318Columns.MMSI].isin(self.cell_data[Msg12318Columns.MMSI])]
+        msg5 = msg5[msg5[Msg5Columns.MMSI].isin(self.cell_data[Msg12318Columns.MMSI])]
         return msg5
 
     def _load_cell_data(self, cell: Cell) -> pd.DataFrame:
@@ -326,11 +326,13 @@ class SearchAgent:
         """
         st = self.msg5_data[self.msg5_data[Msg5Columns.MMSI] == mmsi]\
             [Msg5Columns.SHIPTYPE].values
-        if len(st) > 1:
-            logger.warning(
-                f"More than one ship type found for MMSI {mmsi}. "
-                f"Found {np.unique(st)}. Returning {st[0]}.")
-        return st[0]
+        if isinstance(st,np.ndarray):
+            if len(st) > 1:
+                logger.warning(
+                    f"More than one ship type found for MMSI {mmsi}. "
+                    f"Found {np.unique(st)}. Returning {st[0]}.")
+                return st[0]
+        return st
 
     def _get_neighbors(self, tpos: TimePosition):
         """
