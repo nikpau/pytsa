@@ -325,7 +325,7 @@ class SearchAgent:
         one is returned and a warning is logged.
         """
         st = self.msg5_data[self.msg5_data[Msg5Columns.MMSI] == mmsi]\
-            [Msg5Columns.SHIPTYPE].values[0]
+            [Msg5Columns.SHIPTYPE].values
         if len(st) > 1:
             logger.warning(
                 f"More than one ship type found for MMSI {mmsi}. "
