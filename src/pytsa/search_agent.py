@@ -207,6 +207,7 @@ class SearchAgent:
         """
         snippets = []
         for file in self.msg5files:
+            logger.info(f"Loading msg5 file '{file}'")
             msg5 = pd.read_csv(
                 file,usecols=
                 [Msg5Columns.MMSI,Msg5Columns.SHIPTYPE]
