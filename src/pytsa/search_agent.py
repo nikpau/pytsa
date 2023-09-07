@@ -51,6 +51,7 @@ class SearchAgent:
         frame: BoundingBox,
         msg5file: Union[Path,List[Path]] = None,
         search_radius: float = 0.5, # in nautical miles
+        time_delta: int = 30, # in minutes
         max_tgt_ships: int = 50,
         n_cells: int = 144,
         filter: Callable[[pd.DataFrame],pd.DataFrame] = lambda x: x
@@ -97,7 +98,7 @@ class SearchAgent:
         
         # Maximum temporal deviation of target
         # ships from provided time in `init()`
-        self.time_delta = 30 # in minutes
+        self.time_delta = time_delta # in minutes
         
         # Search radius in [°] around agent
         self.search_radius = search_radius
