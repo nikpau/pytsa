@@ -34,10 +34,10 @@ class ShipType(Enum):
     Dataclass to store the type of vessel
     as defined by the AIS standard.
     """
-    PASSENGER = 60
-    CARGO = 70
-    TANKER = 80
-    OTHER = 90
+    PASSENGER = range(60,70)
+    CARGO = range(70,80)
+    TANKER = range(80,90)
+    OTHER = range(90,100)
 
 @dataclass
 class LatLonBoundingBox:
