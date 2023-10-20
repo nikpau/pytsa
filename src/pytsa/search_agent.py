@@ -331,9 +331,26 @@ class SearchAgent:
         if st.size > 1:
             logger.warning(
                 f"More than one ship type found for MMSI {mmsi}. "
-                f"Found {np.unique(st)}. Returning {st[0]}.")
+                f"Found {st}. Returning {st[0]}.")
             return st[0]
         return st
+
+    def _get_ship_length(self, mmsi: int) -> int:
+        """
+        Return the ship length of a given MMSI number.
+
+        If more than one ship length is found, the first
+        one is returned and a warning is logged.
+        """
+        raw = self.msg5_data[self.msg5_data[Msg5Columns.MMSI] == mmsi]\
+            [[Msg5Columns.TO_BOW,Msg5Columns.TO_STERN]].values
+        sl:np.ndarray = np.sum(raw,axis=1)
+        if sl.size > 1:
+            logger.warning(
+                f"More than one ship length found for MMSI {mmsi}. "
+                f"Found {sl}. Returning {sl[0]}.")
+            return sl[0]
+        return sl
 
     def _get_neighbors(self, tpos: TimePosition):
         """
@@ -398,6 +415,7 @@ class SearchAgent:
                     ts = tpos.timestamp,
                     mmsi=mmsi,
                     ship_type=self._get_ship_type(mmsi),
+                    length=self._get_ship_length(mmsi),
                     track=[msg]
                 )
             else: 

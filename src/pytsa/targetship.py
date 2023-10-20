@@ -180,6 +180,8 @@ class TargetVessel:
         - mmsi: Maritime Mobile Service Identity
         - track: List of AIS messages belonging to the
                 target vessel
+        - ship_type: Ship type of the target vessel
+        - length: Length of the target vessel
                 
     Methods:
         - interpolate(): Construct smoothed univariate splines
@@ -234,12 +236,14 @@ class TargetVessel:
         mmsi: MMSI, 
         track: List[AISMessage],
         ship_type: ShipType = None,
+        length: float = None
         ) -> None:
         
         self.ts = ts
         self.mmsi = mmsi 
         self.track = track
         self.ship_type = ship_type
+        self.length = length
         self.lininterp = False # Linear interpolation flag
         
         # Indicate if the interpolation function have 
@@ -570,6 +574,18 @@ class TrajectoryMatcher:
         # Plot trajectories in easting-northing space
         v1p = ax1.plot(obs_vessel1[:,1], obs_vessel1[:,0],color = v1color)[0]
         v2p = ax1.plot(obs_vessel2[:,1], obs_vessel2[:,0],color=v2color)[0]
+
+        for x,y,n in zip(obs_vessel1[:,1][::n], 
+                         obs_vessel1[:,0][::n],
+                         np.arange(len(obs_vessel1[:,0][::n]))):
+            ax1.text(x,y,n,fontsize=8,color=v1color)
+        
+        for x,y,n in zip(obs_vessel2[:,1][::n],
+                        obs_vessel2[:,0][::n],
+                        np.arange(len(obs_vessel2[:,0][::n]))):
+             ax1.text(x,y,n,fontsize=8,color=v2color)
+            
+        
         v1s = ax1.scatter(obs_vessel1[:,1][::n], obs_vessel1[:,0][::n],color = v1color)
         v2s = ax1.scatter(obs_vessel2[:,1][::n], obs_vessel2[:,0][::n],color=v2color)
         ax1.set_title("Trajectories")

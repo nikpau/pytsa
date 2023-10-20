@@ -240,7 +240,7 @@ class LatLonCellManager:
         else: return NOTDETERMINED # Vessel is exacty in the middle of the cell
         
     def plot_grid(self,*, f: plt.Figure = None, ax: plt.Axes = None) -> None:
-        return
+        return # Temporarily disabled
         # Load north sea geometry
         if f is None and ax is None:
             f, ax = plt.subplots()
@@ -416,6 +416,7 @@ class UTMCellManager(LatLonCellManager):
         else: return NOTDETERMINED # Vessel is exacty in the middle of the cell
         
     def plot_grid(self,*, f: plt.Figure = None, ax: plt.Axes = None) -> None:
+        return # Temporarily disabled
         # Load north sea geometry
         if f is None and ax is None:
             f, ax = plt.subplots()

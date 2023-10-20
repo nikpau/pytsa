@@ -52,6 +52,7 @@ class LatLonBoundingBox:
     LONMIN: Longitude
     LONMAX: Longitude
     name: str = NONAME
+    number: int = NOINDEX
     
     def __repr__(self) -> str:
         return (
@@ -256,6 +257,10 @@ class Msg5Columns:
     SHIPTYPE = "ship_type"
     SHIPNAME = "shipname"
     CALLSIGN = "callsign"
+    TO_BOW = "to_bow"
+    TO_STERN = "to_stern"
+    TO_PORT = "to_port"
+    TO_STARBOARD = "to_starboard"
 
 @dataclass
 class AdjacentCells:
