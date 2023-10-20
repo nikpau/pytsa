@@ -211,7 +211,12 @@ class SearchAgent:
             logger.info(f"Loading msg5 file '{file}'")
             msg5 = pd.read_csv(
                 file,usecols=
-                [Msg5Columns.MMSI,Msg5Columns.SHIPTYPE]
+                [
+                    Msg5Columns.MMSI,
+                    Msg5Columns.SHIPTYPE,
+                    Msg5Columns.TO_BOW,
+                    Msg5Columns.TO_STERN
+                ]
             )
             snippets.append(msg5)
         msg5 = pd.concat(snippets)
