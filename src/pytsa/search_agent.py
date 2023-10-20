@@ -350,6 +350,7 @@ class SearchAgent:
         raw = self.msg5_data[self.msg5_data[Msg5Columns.MMSI] == mmsi]\
             [[Msg5Columns.TO_BOW,Msg5Columns.TO_STERN]].values
         sl:np.ndarray = np.sum(raw,axis=1)
+        sl = np.unique(sl)
         if sl.size > 1:
             logger.warning(
                 f"More than one ship length found for MMSI {mmsi}. "
