@@ -85,7 +85,8 @@ class LatLonBoundingBox:
             max_northing=max_northing,
             zone_number=zn,
             zone_letter=zl,
-            name=self.name
+            name=self.name,
+            number=self.number
         )
 
 @dataclass
@@ -101,6 +102,7 @@ class UTMBoundingBox:
     zone_number: int
     zone_letter: str
     name: str = NONAME
+    number: int = NOINDEX
     
     def __repr__(self) -> str:
         return (

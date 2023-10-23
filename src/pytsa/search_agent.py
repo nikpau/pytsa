@@ -52,7 +52,7 @@ class SearchAgent:
         msg5file: Union[Path,List[Path]] = None,
         search_radius: float = 0.5, # in nautical miles
         time_delta: int = 30, # in minutes
-        max_tgt_ships: int = 50,
+        max_tgt_ships: int = 200,
         n_cells: int = 144,
         filter: Callable[[pd.DataFrame],pd.DataFrame] = lambda x: x
         ) -> None:
@@ -170,7 +170,9 @@ class SearchAgent:
                 self.init(pos)
 
 
-    def get_ships(self, tpos: TimePosition) -> List[TargetVessel]:
+    def get_ships(self, 
+                  tpos: TimePosition, 
+                  overlap_tpos: bool = True) -> List[TargetVessel]:
         """
         Returns a list of target ships
         present in the neighborhood of the given position. 
@@ -179,9 +181,10 @@ class SearchAgent:
                 neighbors shall be found
         """
         # Check if cells need buffering
-        self._buffer(tpos.position)
+        if self.n_cells > 1:
+            self._buffer(tpos.position)
         neigbors = self._get_neighbors(tpos)
-        tgts = self._construct_target_vessels(neigbors, tpos)
+        tgts = self._construct_target_vessels(neigbors, tpos, overlap_tpos)
         # Contruct Splines for all target ships
         tgts = self._construct_splines(tgts)
         return tgts
@@ -321,7 +324,10 @@ class SearchAgent:
                 )
             return cKDTree(np.column_stack((northings,eastings)))
         else:
-            return cKDTree(data[[Msg12318Columns.LAT,Msg12318Columns.LON]])
+            lat=data[Msg12318Columns.LAT].values
+            lon=data[Msg12318Columns.LON].values
+            return cKDTree(np.column_stack((lat,lon)))
+            
         
     def _get_ship_type(self, mmsi: int) -> int:
         """
@@ -378,13 +384,16 @@ class SearchAgent:
         # The conversion to degrees is only accurate at the equator.
         # Everywhere else, the distances get smaller as lines of 
         # Longitude are not parallel. Therefore, 
-        # this is a conservative estimate.         
-        search_radius = (nm2m(self.search_radius) if self._utm 
-                         else self.search_radius/60) # Convert to degrees
+        # this is a conservative estimate.
+        if not self.search_radius == np.inf:
+            sr = (nm2m(self.search_radius) if self._utm 
+                            else self.search_radius/60) # Convert to degrees
+        else:
+            sr = np.inf
         d, indices = tree.query(
             list(tpos.position),
             k=self.max_tgt_ships,
-            distance_upper_bound=search_radius
+            distance_upper_bound=sr
         )
         # Sort out any infinite distances
         res = [indices[i] for i,j in enumerate(d) if j != float("inf")]
@@ -392,7 +401,10 @@ class SearchAgent:
         return filtered.iloc[res]
 
     def _construct_target_vessels(
-            self, df: pd.DataFrame, tpos: TimePosition) -> List[TargetVessel]:
+            self, 
+            df: pd.DataFrame, 
+            tpos: TimePosition,
+            overlap_tpos: bool = True) -> List[TargetVessel]:
         """
         Walk through the rows of `df` and construct a 
         `TargetVessel` object for every unique MMSI. 
@@ -428,16 +440,24 @@ class SearchAgent:
                 v = targets[mmsi]
                 v.track.append(msg)
 
-        return self._cleanup_targets(targets,tpos)
+        return self._cleanup_targets(targets,tpos,overlap_tpos)
 
     def _cleanup_targets(self, 
-            targets: dict[int,TargetVessel], tpos: TimePosition) -> List[TargetVessel]:
+            targets: dict[int,TargetVessel], 
+            tpos: TimePosition,
+            overlap_tpos) -> List[TargetVessel]:
         """
         Flag all vessels with less than 4 points in their track for linear interpolation.
         
         
         Also remove vessels whose track lies outside
-        the queried timestamp. 
+        the queried timestamp.
+        
+        `overlap_tpos` is a boolean flag indicating whether
+        we only want to return vessels, whose track overlaps
+        with the queried timestamp. If `overlap_tpos` is False,
+        all vessels whose track is within the time delta of the
+        queried timestamp are returned.
         
         """
         for mmsi, target_ship in list(targets.items()):
@@ -445,11 +465,14 @@ class SearchAgent:
             if len(target_ship.track) < 2:
                 del targets[mmsi]
                 continue
-            elif not (
+            if overlap_tpos and not (
                 target_ship.track[0].timestamp < 
                 tpos.timestamp < 
-                target_ship.track[-1].timestamp) or \
-                all(v.SOG < .5 for v in target_ship.track):
+                target_ship.track[-1].timestamp):
+                del targets[mmsi]
+                continue
+            
+            if all(v.SOG < 1 for v in target_ship.track):
                 del targets[mmsi]
                 continue
             # Spline interpolation needs at least 4 points
