@@ -480,6 +480,9 @@ class TrajectoryMatcher:
         self.vessel1 = vessel1
         self.vessel2 = vessel2
 
+        self.vessel1.find_shell()
+        self.vessel2.find_shell()
+
         if self._disjoint():
             self.disjoint_trajectories = True
             self.overlapping_trajectories = False
@@ -494,7 +497,7 @@ class TrajectoryMatcher:
 
     def _overlapping(self, threshold: int) -> bool:
         """
-        Check if the trajectories overlap
+        Check if the trajectories overlap for a given threshold
         """
         return (self.end - self.start) > threshold * 60
     
@@ -522,7 +525,9 @@ class TrajectoryMatcher:
         """
         return (
             (self.vessel1.upper.timestamp < self.vessel2.lower.timestamp) or
-            (self.vessel2.upper.timestamp < self.vessel1.lower.timestamp)
+            (self.vessel2.upper.timestamp < self.vessel1.lower.timestamp) or 
+            (self.vessel1.lower.timestamp > self.vessel2.upper.timestamp) or
+            (self.vessel2.lower.timestamp > self.vessel1.upper.timestamp)
         )
 
     def observe_interval(self,interval: int) -> TrajectoryMatcher:
