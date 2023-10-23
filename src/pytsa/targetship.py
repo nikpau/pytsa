@@ -47,12 +47,14 @@ class TrackSplines:
     spline interpolation on a given AIS track.
 
     This class provides the following attributes:
-        - spl_northing: Spline interpolation of northing
-        - spl_easting: Spline interpolation of easting
-        - spl_COG: Spline interpolation of course over ground
-        - spl_SOG: Spline interpolation of speed over ground
-        - spl_ROT: Spline interpolation of rate of turn
-        - spl_dROT: Spline interpolation of change of rate of turn
+        - lat: Spline interpolation of latitude
+        - lon: Spline interpolation of longitude
+        - northing: Spline interpolation of northing
+        - easting: Spline interpolation of easting
+        - COG: Spline interpolation of course over ground
+        - SOG: Spline interpolation of speed over ground
+        - ROT: Spline interpolation of rate of turn
+        - dROT: Spline interpolation of change of rate of turn
 
         All splines are univariate splines, with time as the
         independent variable.
@@ -69,6 +71,12 @@ class TrackSplines:
         """
         timestamps = [int(msg.timestamp) for msg in self.track]
 
+        self.lat = UnivariateSpline(
+            timestamps, [msg.lat for msg in self.track]
+        )
+        self.lon = UnivariateSpline(
+            timestamps, [msg.lon for msg in self.track]
+        )
         self.northing = UnivariateSpline(
             timestamps, [msg.northing for msg in self.track]
         )
@@ -103,7 +111,13 @@ class TrackLinear:
         the class as attributes.
         """
         timestamps = [msg.timestamp for msg in self.track]
-
+        
+        self.lat = interp1d(
+            timestamps, [msg.lat for msg in self.track]
+        )
+        self.lon = interp1d(
+            timestamps, [msg.lon for msg in self.track]
+        )
         self.northing = interp1d(
             timestamps, [msg.northing for msg in self.track]
         )
