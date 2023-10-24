@@ -16,7 +16,7 @@ import numpy as np
 import utm
 from matplotlib import pyplot as plt
 from matplotlib.gridspec import GridSpec
-from scipy.interpolate import UnivariateSpline, interp1d
+from scipy.interpolate import InterpolatedUnivariateSpline, interp1d
 from .structs import ShipType
 
 # Settings for numerical integration
@@ -71,28 +71,28 @@ class TrackSplines:
         """
         timestamps = [int(msg.timestamp) for msg in self.track]
 
-        self.lat = UnivariateSpline(
+        self.lat = InterpolatedUnivariateSpline(
             timestamps, [msg.lat for msg in self.track]
         )
-        self.lon = UnivariateSpline(
+        self.lon = InterpolatedUnivariateSpline(
             timestamps, [msg.lon for msg in self.track]
         )
-        self.northing = UnivariateSpline(
+        self.northing = InterpolatedUnivariateSpline(
             timestamps, [msg.northing for msg in self.track]
         )
-        self.easting = UnivariateSpline(
+        self.easting = InterpolatedUnivariateSpline(
             timestamps, [msg.easting for msg in self.track]
         )
-        self.COG = UnivariateSpline(
+        self.COG = InterpolatedUnivariateSpline(
             timestamps, [msg.COG for msg in self.track]
         )
-        self.SOG = UnivariateSpline(
+        self.SOG = InterpolatedUnivariateSpline(
             timestamps, [msg.SOG for msg in self.track]
         )
-        self.ROT = UnivariateSpline(
+        self.ROT = InterpolatedUnivariateSpline(
             timestamps, [msg.ROT for msg in self.track]
         )
-        self.dROT = UnivariateSpline(
+        self.dROT = InterpolatedUnivariateSpline(
             timestamps, [msg.dROT for msg in self.track]
         )
 
