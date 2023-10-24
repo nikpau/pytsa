@@ -172,19 +172,33 @@ class SearchAgent:
 
     def get_ships(self, 
                   tpos: TimePosition, 
-                  overlap_tpos: bool = True) -> List[TargetVessel]:
+                  overlap_tpos: bool = True,
+                  all_trajectories = False) -> List[TargetVessel]:
         """
         Returns a list of target ships
         present in the neighborhood of the given position. 
         
         tpos: TimePosition object of agent for which 
                 neighbors shall be found
+
+        overlap_tpos: boolean flag indicating whether
+                we only want to return vessels, whose track overlaps
+                with the queried timestamp. If `overlap_tpos` is False,
+                all vessels whose track is within the time delta of the
+                queried timestamp are returned.
+        all_trajectories: boolean flag indicating whether
+                we want to return all TagestVeessel objects
+                without temporal, and spatial filtering.
         """
         # Check if cells need buffering
         if self.n_cells > 1:
             self._buffer(tpos.position)
-        neigbors = self._get_neighbors(tpos)
-        tgts = self._construct_target_vessels(neigbors, tpos, overlap_tpos)
+        # Get neighbors
+        if all_trajectories:
+            tgts = self._construct_target_vessels(self.cell_data, tpos, overlap_tpos)
+        else:
+            neigbors = self._get_neighbors(tpos)
+            tgts = self._construct_target_vessels(neigbors, tpos, overlap_tpos)
         # Contruct Splines for all target ships
         tgts = self._construct_splines(tgts)
         return tgts
