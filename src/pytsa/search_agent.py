@@ -173,7 +173,8 @@ class SearchAgent:
     def get_ships(self, 
                   tpos: TimePosition, 
                   overlap_tpos: bool = True,
-                  all_trajectories = False) -> List[TargetVessel]:
+                  all_trajectories = False,
+                  interpolation: str = "linear") -> List[TargetVessel]:
         """
         Returns a list of target ships
         present in the neighborhood of the given position. 
@@ -190,6 +191,8 @@ class SearchAgent:
                 we want to return all TagestVeessel objects
                 without temporal, and spatial filtering.
         """
+        assert interpolation in ["linear","spline","auto"], \
+            "Interpolation method must be either 'linear', 'spline' or 'auto'"
         # Check if cells need buffering
         if self.n_cells > 1:
             self._buffer(tpos.position)
@@ -200,10 +203,12 @@ class SearchAgent:
             neigbors = self._get_neighbors(tpos)
             tgts = self._construct_target_vessels(neigbors, tpos, overlap_tpos)
         # Contruct Splines for all target ships
-        tgts = self._construct_splines(tgts)
+        tgts = self._construct_splines(tgts,mode=interpolation)
         return tgts
     
-    def _construct_splines(self, tgts: List[TargetVessel]) -> List[TargetVessel]:
+    def _construct_splines(self, 
+                           tgts: List[TargetVessel],
+                           mode: str = "auto") -> List[TargetVessel]:
         """
         Interpolate all target ship tracks
         """
@@ -212,7 +217,7 @@ class SearchAgent:
             tgt.find_shell() # Find shell (start/end of traj) of target ship
             tgt.ts_to_unix() # Convert timestamps to unix
             try:
-                tgt.interpolate() # Construct splines
+                tgt.interpolate(mode) # Construct splines
             except InterpolationError as e:
                 logger.warn(e)
                 del tgts[i]

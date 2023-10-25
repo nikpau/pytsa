@@ -264,19 +264,36 @@ class TargetVessel:
         # been attached to the object
         self.interpolation = None
     
-    def interpolate(self) -> None:
+    def interpolate(self,mode: str) -> None:
         """
         Construct splines for the target vessel
         """
-        try:
-            if self.lininterp:
+        assert mode in ["linear","spline","auto"],\
+            "Mode must be either 'linear', 'spline' or 'auto'."
+        if mode == "auto":
+            try:
+                if self.lininterp:
+                    self.interpolation = TrackLinear(self.track)
+                else:
+                    self.interpolation = TrackSplines(self.track)
+            except Exception as e:
+                raise InterpolationError(
+                    f"Could not interpolate the target vessel trajectory:\n{e}."
+                )
+        elif mode == "linear":
+            try:
                 self.interpolation = TrackLinear(self.track)
-            else:
+            except Exception as e:
+                raise InterpolationError(
+                    f"Could not interpolate the target vessel trajectory:\n{e}."
+                )
+        elif mode == "spline":
+            try:
                 self.interpolation = TrackSplines(self.track)
-        except Exception as e:
-            raise InterpolationError(
-                f"Could not interpolate the target vessel trajectory:\n{e}."
-            )
+            except Exception as e:
+                raise InterpolationError(
+                    f"Could not interpolate the target vessel trajectory:\n{e}."
+                )
 
     def observe_at_query(self, time: datetime | str | None = None) -> np.ndarray:
         """
