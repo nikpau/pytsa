@@ -17,7 +17,7 @@ import utm
 from matplotlib import pyplot as plt
 from matplotlib.gridspec import GridSpec
 from scipy.interpolate import InterpolatedUnivariateSpline, interp1d
-from .structs import ShipType
+from pytsa.structs import ShipType
 
 # Settings for numerical integration
 Q_SETTINGS = dict(epsabs=1e-13,epsrel=1e-13,limit=500)

@@ -12,12 +12,12 @@ import pandas as pd
 from scipy.spatial import cKDTree
 import utm
 
-from .logger import Loader, logger
-from .structs import (
+from pytsa.logger import Loader, logger
+from pytsa.structs import (
     BoundingBox, Position, TimePosition, 
     Msg12318Columns, Msg5Columns,UTMBoundingBox
 )
-from .targetship import TargetVessel, AISMessage, InterpolationError
+from pytsa.targetship import TargetVessel, AISMessage, InterpolationError
 
 # Exceptions
 class FileLoadingError(Exception):
