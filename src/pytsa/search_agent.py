@@ -276,7 +276,7 @@ class SearchAgent:
                     Msg5Columns.TO_STERN
                 ]
             )
-            snippets.append(msg5.query(self.spatial_filter))
+            snippets.append(msg5)
         msg5 = pd.concat(snippets)
         msg5 = msg5[msg5[Msg5Columns.MMSI].isin(self.dynamic_msgs[Msg12318Columns.MMSI])]
         return msg5
