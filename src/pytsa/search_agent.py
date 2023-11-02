@@ -30,11 +30,6 @@ class FileLoadingError(Exception):
 MMSI = int
 Targets = dict[MMSI,TargetVessel]
 
-# Amount of seconds two messages
-# can be apart from each other
-# to be considered as consecutive
-CONSECUTIVE = 60*60 # 1 hour
-
 
 def m2nm(m: float) -> float:
     """Convert meters to nautical miles"""
@@ -43,6 +38,23 @@ def m2nm(m: float) -> float:
 def nm2m(nm: float) -> float:
     """Convert nautical miles to meters"""
     return nm*1852
+
+from math import radians, cos, sin, asin, sqrt
+def haversine(lon1, lat1, lon2, lat2, miles = True):
+    """
+    Calculate the great circle distance in kilometers between two points 
+    on the earth (specified in decimal degrees)
+    """
+    # convert decimal degrees to radians 
+    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+
+    # haversine formula 
+    dlon = lon2 - lon1 
+    dlat = lat2 - lat1 
+    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+    c = 2 * asin(sqrt(a)) 
+    r = 3956 if miles else 6371 # Radius of earth in kilometers or miles
+    return c * r
 
 class SearchAgent:
     """
@@ -236,10 +248,20 @@ class SearchAgent:
     
     def get_raw_ships(self, 
                   tpos: TimePosition, 
-                  all_trajectories = False) -> Targets:
+                  all_trajectories = False,
+                  max_tgap: int = 180,
+                  max_dgap: float = 10) -> Targets:
         """
         Returns a list of all target ships without any
         filtering
+        
+        `all_trajectories` is a boolean flag indicating whether
+        we want to return all TagestVeessel objects or just those
+        overlapping with the queried timestamp.
+        
+        `max_tgap` is the maximum time gap in seconds between two AIS Messages.
+        `max_dgap` is the maximum distance gap in nautical miles between two AIS Messages.
+        
         
         """
         # Check if cells need buffering
@@ -247,10 +269,12 @@ class SearchAgent:
             self._buffer(tpos.position)
         # Get neighbors
         if all_trajectories:
-            tgts = self._construct_target_vessels(self.cell_data, tpos)
+            tgts = self._construct_target_vessels(
+                self.cell_data, tpos,max_tgap,max_dgap)
         else:
             neigbors = self._get_neighbors(tpos)
-            tgts = self._construct_target_vessels(neigbors, tpos)
+            tgts = self._construct_target_vessels(
+                neigbors, tpos,max_tgap,max_dgap)
         return tgts
     
     def _construct_splines(self, 
@@ -468,7 +492,9 @@ class SearchAgent:
     def _construct_target_vessels(
             self, 
             df: pd.DataFrame, 
-            tpos: TimePosition) -> Targets:
+            tpos: TimePosition,
+            max_tgap: int,
+            max_dgap: float) -> Targets:
         """
         Walk through the rows of `df` and construct a 
         `TargetVessel` object for every unique MMSI. 
@@ -476,8 +502,12 @@ class SearchAgent:
         The individual AIS Messages are sorted by date
         and are added to the respective TargetVessel's track attribute.
         
-        `cleanup` is the number of times the cleanup function
-        is called recursively.
+        `max_tgap` is the maximum time gap in seconds between two AIS Messages.
+        `max_dgap` is the maximum distance gap in nautical miles between two AIS Messages.
+        
+        If the time or spatial difference between two AIS Messages is too large,
+        the track of the target ship is split into two tracks.
+        
         """
         df = df.sort_values(by=Msg12318Columns.TIMESTAMP)
         targets: Targets = {}
@@ -501,18 +531,38 @@ class SearchAgent:
                     mmsi=mmsi,
                     ship_type=self._get_ship_type(mmsi),
                     length=self._get_ship_length(mmsi),
-                    track=[msg]
+                    tracks=[[msg]]
                 )
-            else: 
+            else:
+                if self._message_gap_too_large(
+                    max_tgap,max_dgap,
+                    targets[mmsi].tracks[-1][-1],msg):
+                    targets[mmsi].tracks.append([])
                 v = targets[mmsi]
-                v.track.append(msg)
+                v.tracks[-1].append(msg)
 
         for tgt in targets.values():
-            tgt.fill_rot() # Calculate missing 'rate of turn' values via COG
+            #tgt.fill_rot() # Calculate missing 'rate of turn' values via COG
             tgt.find_shell() # Find shell (start/end of traj) of target ship
             tgt.ts_to_unix() # Convert timestamps to unix
 
         return targets#self._corrections(targets)
+
+    def _message_gap_too_large(self, 
+                               tgap: int,
+                               dgap: int, 
+                               msg_t0: AISMessage, 
+                               msg_t1: AISMessage) -> bool:
+        """
+        Return True if the time and spatial difference between two AIS Messages
+        is too large.
+        `tgap` is the maximum time gap in seconds.
+        `dgap` is the maximum distance gap in nautical miles.
+        """
+        return (
+            (msg_t1.timestamp - msg_t0.timestamp).total_seconds() > tgap or
+            haversine(msg_t0.lon,msg_t0.lat,msg_t1.lon,msg_t1.lat) > dgap
+                )
     
     def _corrections(self, targets: Targets) -> Targets:
         """
@@ -540,7 +590,7 @@ class SearchAgent:
         Speed correction after 10.1016/j.aap.2011.05.022
         """
         for target in targets.values():
-            for msg_t0,msg_t1 in pairwise(target.track):
+            for msg_t0,msg_t1 in pairwise(target.tracks):
                 tms = _time_mean_speed(msg_t0,msg_t1)
                 lower_bound = msg_t0.SOG - (msg_t1.SOG - msg_t0.SOG)
                 upper_bound = msg_t1.SOG + (msg_t1.SOG - msg_t0.SOG)
@@ -558,7 +608,7 @@ class SearchAgent:
         Position correction after 10.1016/j.aap.2011.05.022
         """
         for target in targets.values():
-            for msg_t0,msg_t1 in pairwise(target.track):
+            for msg_t0,msg_t1 in pairwise(target.tracks):
                 dt = (msg_t1.timestamp - msg_t0.timestamp)
                 sog_lon, sog_lat = self._break_down_velocity(msg_t0.SOG,msg_t0.COG)
                 lont1 = msg_t0.lon + (sog_lon *dt)
@@ -585,12 +635,10 @@ class SearchAgent:
         """
         Wrapper for `_cleanup_impl` function.
         """
-        rejected = None
         targets, rejected = self._cleanup_impl(
             targets=targets,
             tpos=tpos,
             overlap_tpos=overlap_tpos,
-            rejected=rejected,
             sd=sd,
             minlen=minlen
         )
@@ -601,7 +649,6 @@ class SearchAgent:
             targets: Targets, 
             tpos: TimePosition,
             overlap_tpos: bool = True,
-            rejected: Targets = None,
             sd: float = 0.1,
             minlen: int = 100) -> tuple[list[TargetVessel],list[TargetVessel]]:
         """
@@ -616,37 +663,51 @@ class SearchAgent:
         queried timestamp are returned.
         
         """
-        _targets = deepcopy(targets)
-        if rejected is None:
-            rejected = {}
-        # Number of target ships before filtering
-        n = len(_targets)
+        rejected = {}
+        accepted = {}
 
-        nships = len(_targets)
-        for i, (mmsi,target_ship) in enumerate(list(_targets.items())):
+        # Number of target ships before filtering
+        n = len(targets)
+
+        nships = len(targets)
+        for i, (mmsi,target_ship) in enumerate(targets.items()):
             logger.info(f"Filtering target ship {i+1}/{nships}")
-            # Remove vessels whose track is shorter than `minlen`
-            if self._track_length_filter(target_ship,minlen):
-                del _targets[mmsi]
-                rejected[mmsi] = target_ship
-                continue
-            
-            # Remove vessels whose track has a larger standard deviation
-            if self._track_sd_filter(target_ship,sd):
-                del _targets[mmsi]
-                rejected[mmsi] = target_ship
-                continue
-            
-            if overlap_tpos and not self._overlaps_search_date(target_ship,tpos):
-                del _targets[mmsi]
-                rejected[mmsi] = target_ship
-                continue
+            for tracknr, track in enumerate(target_ship.tracks):
+                # Remove vessels whose track is shorter than `minlen`
+                if self._track_length_filter(track,minlen):
+                    self._copy_track(target_ship,rejected,track)
+                    continue
+                
+                # Remove vessels whose track has a larger standard deviation
+                elif self._track_sd_filter(track,sd):
+                    self._copy_track(target_ship,rejected,track)
+                    continue
+                
+                elif overlap_tpos and not self._overlaps_search_date(track,tpos):
+                    self._copy_track(target_ship,rejected,track)
+                    continue
+                else:
+                    self._copy_track(target_ship,accepted,track)
             
         # Number of target ships after filtering
-        n_filtered = len(_targets)
+        n_filtered = len(targets)
 
-        return _targets, rejected
+        return accepted, rejected
     
+    def _copy_track(self,
+                    vessel: TargetVessel, 
+                    target: Targets,
+                    track: list[AISMessage]) -> None:
+        """
+        Copy a track from one TargetVessel object to another,
+        and delete it from the original.
+        """
+        if vessel.mmsi not in target:
+            target[vessel.mmsi] = deepcopy(vessel)
+            target[vessel.mmsi].tracks = []
+        target[vessel.mmsi].tracks.append(track)
+
+
     def _merge_tracks(self,
                       t1: TargetVessel,
                       t2: TargetVessel) -> TargetVessel:
@@ -654,58 +715,41 @@ class SearchAgent:
         Merge two target vessels into one.
         """
         assert t1.mmsi == t2.mmsi, "Can only merge tracks of same target vessel"
-        t1.track.extend(t2.track)
+        t1.tracks.extend(t2.tracks)
         return t1
 
-    def _track_length_filter(self, vessel: TargetVessel, n: int) -> bool:
+    def _track_length_filter(self, track: list[AISMessage], n: int) -> bool:
         """
         Return True if the length of the track of the given vessel
         is smaller than `n`.
         """
-        return len(vessel.track) < n
+        return len(track) < n
     
-    def _track_sd_filter(self, vessel: TargetVessel, sd: float) -> bool:
+    def _track_sd_filter(self, track: list[AISMessage], sd: float) -> bool:
         """
         Return True if the summed standard deviation of lat/lon 
         of the track of the given vessel is smallerw than `sd`.
         Unit of `sd` is [°].
         """
-        sdlon = np.sqrt(np.var([v.lon for v in vessel.track]))
-        sdlat = np.sqrt(np.var([v.lat for v in vessel.track]))
+        sdlon = np.sqrt(np.var([v.lon for v in track]))
+        sdlat = np.sqrt(np.var([v.lat for v in track]))
         return (sdlon+sdlat) < sd
     
-    def _track_span_filter(self, vessel: TargetVessel, span: float) -> bool:
+    def _track_span_filter(self, track: list[AISMessage], span: float) -> bool:
         """
         Return True if the lateral and longitudinal span
         of the track of the given vessel is smaller than `span`.
         """
-        lat_span = np.ptp([v.lat for v in vessel.track])
-        lon_span = np.ptp([v.lon for v in vessel.track])
+        lat_span = np.ptp([v.lat for v in track])
+        lon_span = np.ptp([v.lon for v in track])
         return lat_span > span and lon_span > span
-    
-    def _track_speed_filter(self, 
-                            vessel: TargetVessel, 
-                            speeds: tuple[float,float]) -> Union[TargetVessel,None]:
-        """
-        Returns the input vessel with only those observations
-        whose speed lies within the given interval.
-        """
-        min_speed, max_speed = speeds
-        sort_out = [v for v in vessel.track if min_speed < v.SOG < max_speed]
-        sort_in = [v for v in vessel.track if v not in sort_out]
-
-        target = deepcopy(vessel)
-        target.track = sort_in
-        rejected = deepcopy(vessel)
-        rejected.track = sort_out
-        return vessel, rejected if sort_out else None
     
     def _overlaps_search_date(self, vessel: TargetVessel, tpos: TimePosition) -> bool:
         """
         Return True if the track of the given vessel
         overlaps with the queried timestamp.
         """
-        return (vessel.track[0].timestamp < tpos.timestamp < vessel.track[-1].timestamp)
+        return (vessel.tracks[0].timestamp < tpos.timestamp < vessel.tracks[-1].timestamp)
 
     def _time_filter(self, df: pd.DataFrame, date: datetime, delta: int) -> pd.DataFrame:
         """
@@ -729,5 +773,5 @@ def _time_mean_speed(msg_t0: AISMessage,msg_t1: AISMessage) -> float:
     lat_offset = (msg_t1.lat - msg_t0.lat)**2
     lon_offset = (msg_t1.lon - msg_t0.lon)**2
     time_offset = (msg_t1.timestamp - msg_t0.timestamp) # in seconds
-    tms = np.sqrt(lat_offset + lon_offset) / (time_offset / 60 / 60)
+    tms = np.sqrt(lat_offset + lon_offset) / (time_offset / 60 / 60) #[deg/h]
     return tms

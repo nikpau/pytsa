@@ -248,21 +248,21 @@ class TargetVessel:
         self,
         ts: Union[str,datetime], 
         mmsi: MMSI, 
-        track: List[AISMessage],
+        tracks: List[List[AISMessage]],
         ship_type: ShipType = None,
         length: float = None
         ) -> None:
         
         self.ts = ts
         self.mmsi = mmsi 
-        self.track = track
+        self.tracks = tracks
         self.ship_type = ship_type
         self.length = length
         self.lininterp = False # Linear interpolation flag
         
         # Indicate if the interpolation function have 
         # been attached to the object
-        self.interpolation = None
+        self.interpolation: list[TrackSplines] | list[TrackLinear] | None = None
     
     def interpolate(self,mode: str) -> None:
         """
@@ -270,30 +270,32 @@ class TargetVessel:
         """
         assert mode in ["linear","spline","auto"],\
             "Mode must be either 'linear', 'spline' or 'auto'."
-        if mode == "auto":
-            try:
-                if self.lininterp:
-                    self.interpolation = TrackLinear(self.track)
-                else:
-                    self.interpolation = TrackSplines(self.track)
-            except Exception as e:
-                raise InterpolationError(
-                    f"Could not interpolate the target vessel trajectory:\n{e}."
-                )
-        elif mode == "linear":
-            try:
-                self.interpolation = TrackLinear(self.track)
-            except Exception as e:
-                raise InterpolationError(
-                    f"Could not interpolate the target vessel trajectory:\n{e}."
-                )
-        elif mode == "spline":
-            try:
-                self.interpolation = TrackSplines(self.track)
-            except Exception as e:
-                raise InterpolationError(
-                    f"Could not interpolate the target vessel trajectory:\n{e}."
-                )
+        self.interpolation = []
+        for track in self.tracks:
+            if mode == "auto":
+                try:
+                    if self.lininterp:
+                        self.interpolation.append(TrackLinear(track))
+                    else:
+                        self.interpolation.append(TrackSplines(track))
+                except Exception as e:
+                    raise InterpolationError(
+                        f"Could not interpolate the target vessel trajectory:\n{e}."
+                    )
+            elif mode == "linear":
+                try:
+                    self.interpolation.append(TrackLinear(track))
+                except Exception as e:
+                    raise InterpolationError(
+                        f"Could not interpolate the target vessel trajectory:\n{e}."
+                    )
+            elif mode == "spline":
+                try:
+                    self.interpolation.append(TrackSplines(track))
+                except Exception as e:
+                    raise InterpolationError(
+                        f"Could not interpolate the target vessel trajectory:\n{e}."
+                    )
 
     def observe_at_query(self, time: datetime | str | None = None) -> np.ndarray:
         """
@@ -316,20 +318,30 @@ class TargetVessel:
             ts = time.timestamp()
         else:
             ts = self.ts.timestamp()
+            
+        # Check if the query timestamp is within the
+        # track's timestamps
+        for i,track in enumerate(self.tracks):
+            if self._is_in_interval(ts,[msg.timestamp for msg in track]):
+                break
+            if i == len(self.tracks)-1:
+                raise OutofTimeBoundsError(
+                    "Query timestamp is not within the track's timestamps."
+                )
 
         # Return the observed values from the splines
         # at the given timestamp
         # Returns a 1x6 array:
         # [northing, easting, COG, SOG, ROT, dROT]
         return np.array([
-            self.interpolation.northing(ts),
-            self.interpolation.easting(ts),
+            self.interpolation[i].northing(ts),
+            self.interpolation[i].easting(ts),
             # Take the modulo 360 to ensure that the
             # course over ground is in the interval [0,360]
-            self.interpolation.COG(ts) % 360,
-            self.interpolation.SOG(ts),
-            self.interpolation.ROT(ts),
-            self.interpolation.dROT(ts),
+            self.interpolation[i].COG(ts) % 360,
+            self.interpolation[i].SOG(ts),
+            self.interpolation[i].ROT(ts),
+            self.interpolation[i].dROT(ts),
         ])
 
     def observe_interval(
@@ -392,6 +404,13 @@ class TargetVessel:
             timestamps
         ])
         return preds.T
+    
+    def _is_in_interval(self, query: int, timestamps: list[int]) -> bool:
+        """
+        Check if the query timestamp is within the
+        given interval.
+        """
+        return (query >= timestamps[0]) and (query <= timestamps[-1])
 
 
     def fill_rot(self) -> None:
@@ -400,30 +419,30 @@ class TargetVessel:
         derivative of roatation by inferring it from 
         the previous and next AIS messages' headings.
         """
-        for idx, msg in enumerate(self.track):
+        for idx, msg in enumerate(self.tracks):
             if idx == 0:
-                self.track[idx].ROT = 0.0
+                self.tracks[idx].ROT = 0.0
                 continue
             # Fill out missing ROT data
             if msg.ROT is None:
-                num = self.track[idx].COG - self.track[idx-1].COG 
-                den = (self.track[idx].timestamp - self.track[idx-1].timestamp).seconds/60
+                num = self.tracks[idx].COG - self.tracks[idx-1].COG 
+                den = (self.tracks[idx].timestamp - self.tracks[idx-1].timestamp).seconds/60
                 if den == 0:
-                    self.track[idx].ROT = 0.0
+                    self.tracks[idx].ROT = 0.0
                 else:
-                    self.track[idx].ROT = num/den
+                    self.tracks[idx].ROT = num/den
 
-        for idx, msg in enumerate(self.track):
-            if idx == 0 or idx == len(self.track)-1:
-                self.track[idx].dROT = 0.0
+        for idx, msg in enumerate(self.tracks):
+            if idx == 0 or idx == len(self.tracks)-1:
+                self.tracks[idx].dROT = 0.0
                 continue
             # Calculate first derivative of ROT
-            num = self.track[idx+1].ROT - self.track[idx].ROT
-            den = (self.track[idx+1].timestamp - self.track[idx].timestamp).seconds/60 # Minutes
+            num = self.tracks[idx+1].ROT - self.tracks[idx].ROT
+            den = (self.tracks[idx+1].timestamp - self.tracks[idx].timestamp).seconds/60 # Minutes
             if den == 0:
-                self.track[idx].dROT = 0.0
+                self.tracks[idx].dROT = 0.0
             else:
-                self.track[idx].dROT = num/den
+                self.tracks[idx].dROT = num/den
 
 
     def overwrite_rot(self) -> None:
@@ -435,23 +454,23 @@ class TargetVessel:
         unix timestamps, so we need to divide by 60
         to get the minutes.
         """
-        for idx, msg in enumerate(self.track):
+        for idx, msg in enumerate(self.tracks):
             if idx == 0:
                 continue
 
-            num = self.track[idx].COG - self.track[idx-1].COG 
-            den = (self.track[idx].timestamp - self.track[idx-1].timestamp)/60 # Minutes
+            num = self.tracks[idx].COG - self.tracks[idx-1].COG 
+            den = (self.tracks[idx].timestamp - self.tracks[idx-1].timestamp)/60 # Minutes
             if den == 0:
                 msg.ROT = 0.0
             else:
                 msg.ROT = num/den
 
-        for idx, msg in enumerate(self.track):
-            if idx == 0 or idx == len(self.track)-1:
+        for idx, msg in enumerate(self.tracks):
+            if idx == 0 or idx == len(self.tracks)-1:
                 continue
             # Calculate first derivative of ROT
-            num = self.track[idx+1].ROT - self.track[idx].ROT
-            den = (self.track[idx+1].timestamp - self.track[idx].timestamp)/60
+            num = self.tracks[idx+1].ROT - self.tracks[idx].ROT
+            den = (self.tracks[idx+1].timestamp - self.tracks[idx].timestamp)/60
             if den == 0:
                 msg.dROT = 0.0
             else:
@@ -466,16 +485,19 @@ class TargetVessel:
         the objects' track elements and save them
         as attributes.
         """ 
-        self.lower = self.track[0]
-        self.upper = self.track[-1]
+        self.lower, self.upper = [], []
+        for track in self.tracks:
+            self.lower.append(track[0])
+            self.upper.append(track[-1])
 
     def ts_to_unix(self) -> None:
         """
         Convert the vessel's timestamp for 
         each track element to unix time.
         """
-        for msg in self.track:
-            msg.timestamp = msg.timestamp.timestamp()
+        for track in self.tracks:
+            for msg in track:
+                msg.timestamp = msg.timestamp.timestamp()
 
 class TrajectoryMatcher:
     """
@@ -641,12 +663,12 @@ class TrajectoryMatcher:
 
         # Original trajectories for both vessels
         v1esp = ax2.scatter(
-            [m.timestamp for m in self.vessel1.track],
-            [m.easting for m in self.vessel1.track],color = v1color,marker="x"
+            [m.timestamp for m in self.vessel1.tracks],
+            [m.easting for m in self.vessel1.tracks],color = v1color,marker="x"
         )
         v2esp = ax2.scatter(
-            [m.timestamp for m in self.vessel2.track],
-            [m.easting for m in self.vessel2.track],color=v2color,marker="x"
+            [m.timestamp for m in self.vessel2.tracks],
+            [m.easting for m in self.vessel2.tracks],color=v2color,marker="x"
         )
         ax2.set_xticks(time_tick_locs)
         ax2.set_xticklabels(time_tick_labels, rotation=45)
@@ -673,12 +695,12 @@ class TrajectoryMatcher:
 
         # Original trajectories for both vessels
         v1nsp = ax3.scatter(
-            [m.timestamp for m in self.vessel1.track],
-            [m.northing for m in self.vessel1.track],color=v1color,marker="x"
+            [m.timestamp for m in self.vessel1.tracks],
+            [m.northing for m in self.vessel1.tracks],color=v1color,marker="x"
         )
         v2nsp = ax3.scatter(
-            [m.timestamp for m in self.vessel2.track],
-            [m.northing for m in self.vessel2.track],color=v2color,marker="x"
+            [m.timestamp for m in self.vessel2.tracks],
+            [m.northing for m in self.vessel2.tracks],color=v2color,marker="x"
         )
         ax3.set_xticks(time_tick_locs)
         ax3.set_xticklabels(time_tick_labels, rotation=45)
@@ -705,12 +727,12 @@ class TrajectoryMatcher:
 
         # Original trajectories for both vessels
         v1csp = ax4.scatter(
-            [m.timestamp for m in self.vessel1.track],
-            [m.COG for m in self.vessel1.track],color=v1color,marker="x"
+            [m.timestamp for m in self.vessel1.tracks],
+            [m.COG for m in self.vessel1.tracks],color=v1color,marker="x"
         )
         v2csp = ax4.scatter(
-            [m.timestamp for m in self.vessel2.track],
-            [m.COG for m in self.vessel2.track],color=v2color,marker="x"
+            [m.timestamp for m in self.vessel2.tracks],
+            [m.COG for m in self.vessel2.tracks],color=v2color,marker="x"
         )
         ax4.set_xticks(time_tick_locs)
         ax4.set_xticklabels(time_tick_labels, rotation=45)
@@ -737,12 +759,12 @@ class TrajectoryMatcher:
 
         # Original trajectories for both vessels
         v1ssp = ax5.scatter(
-            [m.timestamp for m in self.vessel1.track],
-            [m.SOG for m in self.vessel1.track],color=v1color,marker="x"
+            [m.timestamp for m in self.vessel1.tracks],
+            [m.SOG for m in self.vessel1.tracks],color=v1color,marker="x"
         )
         v2ssp = ax5.scatter(
-            [m.timestamp for m in self.vessel2.track],
-            [m.SOG for m in self.vessel2.track],color=v2color,marker="x"
+            [m.timestamp for m in self.vessel2.tracks],
+            [m.SOG for m in self.vessel2.tracks],color=v2color,marker="x"
         )
         ax5.set_xticks(time_tick_locs)
         ax5.set_xticklabels(time_tick_labels, rotation=45)
@@ -769,12 +791,12 @@ class TrajectoryMatcher:
 
         # Original trajectories for both vessels
         v1rsp = ax6.scatter(
-            [m.timestamp for m in self.vessel1.track],
-            [m.ROT for m in self.vessel1.track],color=v1color,marker="x"
+            [m.timestamp for m in self.vessel1.tracks],
+            [m.ROT for m in self.vessel1.tracks],color=v1color,marker="x"
         )
         v2rsp = ax6.scatter(
-            [m.timestamp for m in self.vessel2.track],
-            [m.ROT for m in self.vessel2.track],color=v2color,marker="x"
+            [m.timestamp for m in self.vessel2.tracks],
+            [m.ROT for m in self.vessel2.tracks],color=v2color,marker="x"
         )
         ax6.set_xticks(time_tick_locs)
         ax6.set_xticklabels(time_tick_labels, rotation=45)
@@ -801,12 +823,12 @@ class TrajectoryMatcher:
 
         # Original trajectories for both vessels
         v1drsp = ax7.scatter(
-            [m.timestamp for m in self.vessel1.track],
-            [m.dROT for m in self.vessel1.track],color=v1color,marker="x"
+            [m.timestamp for m in self.vessel1.tracks],
+            [m.dROT for m in self.vessel1.tracks],color=v1color,marker="x"
         )
         v2drsp = ax7.scatter(
-            [m.timestamp for m in self.vessel2.track],
-            [m.dROT for m in self.vessel2.track],color=v2color,marker="x"
+            [m.timestamp for m in self.vessel2.tracks],
+            [m.dROT for m in self.vessel2.tracks],color=v2color,marker="x"
         )
         ax7.set_xticks(time_tick_locs)
         ax7.set_xticklabels(time_tick_labels, rotation=45)
