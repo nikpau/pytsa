@@ -72,7 +72,7 @@ class SearchAgent:
         search_radius: float = 0.5, # in nautical miles
         time_delta: int = 30, # in minutes
         max_tgt_ships: int = 200,
-        filter: Callable[[pd.DataFrame],pd.DataFrame] = lambda x: x
+        preprocessor: Callable[[pd.DataFrame],pd.DataFrame] = lambda x: x
         ) -> None:
        
         """ 
@@ -89,7 +89,7 @@ class SearchAgent:
                 (See also the `get_cell` function for more info)  
         max_tgt_ships: maximum number of target ships to store
 
-        filter: Filter function for input data, applied prior to loading. 
+        preproceccor: Preprocessor function for input data. 
                 Defaults to the identity.
         """
 
@@ -108,6 +108,13 @@ class SearchAgent:
 
         # Spatial bounding box of current AIS message space
         self.FRAME = frame
+        
+        self.spatial_filter = (
+            f"{Msg12318Columns.LON} > {frame.LONMIN} and "
+            f"{Msg12318Columns.LON} < {frame.LONMAX} and "
+            f"{Msg12318Columns.LAT} > {frame.LATMIN} and "
+            f"{Msg12318Columns.LAT} < {frame.LATMAX}"
+        )
 
         # Maximum number of target ships to extract
         self.max_tgt_ships = max_tgt_ships
@@ -122,17 +129,17 @@ class SearchAgent:
         # Init cell manager
         if isinstance(frame,UTMBoundingBox):
             self._utm = True
-            logger.info("UTM Cell Manager initialized")
+            logger.info("UTM mode initialized")
         else:
             self._utm = False
-            logger.info("LatLon Cell Manager initialized")
+            logger.info("LatLon mode initialized")
 
         # List of cell-indicies of all 
         # currently buffered cells
         self._buffered_cell_idx = []
 
-        # Custom filter function for AIS messages
-        self.filter = filter
+        # Custom preprocessor function for input data
+        self.preprocessor = preprocessor
         
         # Length of the original AIS message dataframe
         self._n_original = 0
@@ -160,7 +167,7 @@ class SearchAgent:
         if not self._is_initialized:
             # Load AIS Messages for specific cell
             self.cell_data = self._load_frame_data(self.FRAME)
-            self.msg5_data = self._load_msg5_data()
+            self.msg5_data = self._load_msg5_data(self.FRAME)
             self._is_initialized = True
             pos = f"{pos.lat:.3f}N, {pos.lon:.3f}E" if isinstance(tpos.position,Position)\
                   else f"{pos.easting:.3f}mE, {pos.northing:.3f}mN"
@@ -197,9 +204,6 @@ class SearchAgent:
         """
         assert interpolation in ["linear","spline","auto"], \
             "Interpolation method must be either 'linear', 'spline' or 'auto'"
-        # Check if cells need buffering
-        if self.n_cells > 1:
-            self._buffer(tpos.position)
         # Get neighbors
         if all_trajectories:
             tgts = self._construct_target_vessels(self.cell_data, tpos)
@@ -272,42 +276,30 @@ class SearchAgent:
                     Msg5Columns.TO_STERN
                 ]
             )
-            snippets.append(msg5)
+            snippets.append(msg5.query(self.spatial_filter))
         msg5 = pd.concat(snippets)
         msg5 = msg5[msg5[Msg5Columns.MMSI].isin(self.cell_data[Msg12318Columns.MMSI])]
         return msg5
 
-    def _load_frame_data(self, bb: BoundingBox) -> pd.DataFrame:
+    def _load_frame_data(self) -> pd.DataFrame:
         """
         Load AIS Messages from a given path or list of paths
         and return only messages that fall inside given `cell`-bounds.
         """
         snippets = []
-
-        # Spatial filter for cell. Since the data is
-        # provided in the lat/lon format, we have to
-        # convert the cell to lat/lon as well.
-        if isinstance(bb,UTMBoundingBox):
-            bb = bb.to_latlon()
-        spatial_filter = (
-            f"{Msg12318Columns.LON} > {bb.LONMIN} and "
-            f"{Msg12318Columns.LON} < {bb.LONMAX} and "
-            f"{Msg12318Columns.LAT} > {bb.LATMIN} and "
-            f"{Msg12318Columns.LAT} < {bb.LATMAX}"
-        )
         try:
-            with Loader(bb):
+            with Loader(self.FRAME):
                 for file in self.msg12318files:
                     msg12318 = pd.read_csv(file,sep=",")
                     self._n_original += len(msg12318)
-                    msg12318 = self.filter(msg12318) # Apply custom filter
+                    msg12318 = self.preprocessor(msg12318) # Apply custom filter
                     msg12318[Msg12318Columns.TIMESTAMP] = pd.to_datetime(
                         msg12318[Msg12318Columns.TIMESTAMP]).dt.tz_localize(None)
                     msg12318 = msg12318.drop_duplicates(
                         subset=[Msg12318Columns.TIMESTAMP,Msg12318Columns.MMSI], keep="first"
                     )
                     self._n_filtered += len(msg12318)
-                    snippets.append(msg12318.query(spatial_filter))
+                    snippets.append(msg12318.query(self.spatial_filter))
         except Exception as e:
             logger.error(f"Error while loading cell data: {e}")
             raise FileLoadingError(e)
@@ -431,8 +423,8 @@ class SearchAgent:
         targets: Targets = {}
         
         for mmsi,ts,lat,lon,sog,cog in zip(
-            df[Msg12318Columns.MMSI],df[Msg12318Columns.TIMESTAMP],
-            df[Msg12318Columns.LAT], df[Msg12318Columns.LON],
+            df[Msg12318Columns.MMSI], df[Msg12318Columns.TIMESTAMP],
+            df[Msg12318Columns.LAT],  df[Msg12318Columns.LON],
             df[Msg12318Columns.SPEED],df[Msg12318Columns.COURSE]):
 
             msg = AISMessage(
@@ -452,9 +444,8 @@ class SearchAgent:
                     tracks=[[msg]]
                 )
             else:
-                if self._message_gap_too_large(
-                    max_tgap,max_dgap,
-                    targets[mmsi].tracks[-1][-1],msg):
+                if self._gap_too_large(
+                    max_tgap,max_dgap,targets[mmsi].tracks[-1][-1],msg):
                     targets[mmsi].tracks.append([])
                 v = targets[mmsi]
                 v.tracks[-1].append(msg)
@@ -466,11 +457,11 @@ class SearchAgent:
 
         return targets#self._corrections(targets)
 
-    def _message_gap_too_large(self, 
-                               tgap: int,
-                               dgap: int, 
-                               msg_t0: AISMessage, 
-                               msg_t1: AISMessage) -> bool:
+    def _gap_too_large(self, 
+                       tgap: int,
+                       dgap: int, 
+                       msg_t0: AISMessage, 
+                       msg_t1: AISMessage) -> bool:
         """
         Return True if the time and spatial difference between two AIS Messages
         is too large.
@@ -544,26 +535,8 @@ class SearchAgent:
                     msg_t1.lon = lont1
                     msg_t1.lat = latt1
     
+
     def split(self, 
-              targets: Targets, 
-              tpos: TimePosition, 
-              overlap_tpos: bool = True,
-              sd: float = 0.1,
-              minlen: int = 100) -> tuple[Targets,Targets]:
-        """
-        Wrapper for `_cleanup_impl` function.
-        """
-        targets, rejected = self._cleanup_impl(
-            targets=targets,
-            tpos=tpos,
-            overlap_tpos=overlap_tpos,
-            sd=sd,
-            minlen=minlen
-        )
-
-        return targets, rejected
-
-    def _cleanup_impl(self, 
             targets: Targets, 
             tpos: TimePosition,
             overlap_tpos: bool = True,
@@ -581,16 +554,16 @@ class SearchAgent:
         queried timestamp are returned.
         
         """
-        rejected = {}
-        accepted = {}
+        rejected: Targets = {}
+        accepted: Targets = {}
 
-        # Number of target ships before filtering
-        n = len(targets)
 
         nships = len(targets)
-        for i, (mmsi,target_ship) in enumerate(targets.items()):
+        n = 0 # Number of trajectories before split
+        for i, (_,target_ship) in enumerate(targets.items()):
             logger.info(f"Filtering target ship {i+1}/{nships}")
-            for tracknr, track in enumerate(target_ship.tracks):
+            for track in target_ship.tracks:
+                n += 1
                 # Remove vessels whose track is shorter than `minlen`
                 if self._track_length_filter(track,minlen):
                     self._copy_track(target_ship,rejected,track)
@@ -608,7 +581,11 @@ class SearchAgent:
                     self._copy_track(target_ship,accepted,track)
             
         # Number of target ships after filtering
-        n_filtered = len(targets)
+        n_rejected = [len(v.tracks) for v in rejected.values()]
+        logger.info(
+            f"Filtered {n} trajectories. "
+            f"{(n_rejected)/n*100:.2f}% rejected."
+        )
 
         return accepted, rejected
     
