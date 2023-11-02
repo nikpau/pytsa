@@ -1,6 +1,5 @@
 from itertools import cycle
 import logging
-from os import get_terminal_size
 import sys
 from threading import Thread
 import time
