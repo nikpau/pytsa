@@ -166,8 +166,8 @@ class SearchAgent:
         pos = tpos.position
         if not self._is_initialized:
             # Load AIS Messages for specific cell
-            self.cell_data = self._load_frame_data(self.FRAME)
-            self.msg5_data = self._load_msg5_data(self.FRAME)
+            self.dynamic_msgs = self._load_dynamic_messages()
+            self.static_msgs = self._load_static_messages()
             self._is_initialized = True
             pos = f"{pos.lat:.3f}N, {pos.lon:.3f}E" if isinstance(tpos.position,Position)\
                   else f"{pos.easting:.3f}mE, {pos.northing:.3f}mN"
@@ -206,7 +206,7 @@ class SearchAgent:
             "Interpolation method must be either 'linear', 'spline' or 'auto'"
         # Get neighbors
         if all_trajectories:
-            tgts = self._construct_target_vessels(self.cell_data, tpos)
+            tgts = self._construct_target_vessels(self.dynamic_msgs, tpos)
         else:
             neigbors = self._get_neighbors(tpos)
             tgts = self._construct_target_vessels(neigbors, tpos)
@@ -238,7 +238,7 @@ class SearchAgent:
         # Get neighbors
         if all_trajectories:
             tgts = self._construct_target_vessels(
-                self.cell_data, tpos,max_tgap,max_dgap)
+                self.dynamic_msgs, tpos,max_tgap,max_dgap)
         else:
             neigbors = self._get_neighbors(tpos)
             tgts = self._construct_target_vessels(
@@ -259,7 +259,7 @@ class SearchAgent:
                 del tgts[mmsi]
         return tgts
     
-    def _load_msg5_data(self) -> pd.DataFrame:
+    def _load_static_messages(self) -> pd.DataFrame:
         """
         Load AIS Messages from a given path or list of paths
         and return only messages that fall inside given `cell`-bounds.
@@ -278,13 +278,14 @@ class SearchAgent:
             )
             snippets.append(msg5.query(self.spatial_filter))
         msg5 = pd.concat(snippets)
-        msg5 = msg5[msg5[Msg5Columns.MMSI].isin(self.cell_data[Msg12318Columns.MMSI])]
+        msg5 = msg5[msg5[Msg5Columns.MMSI].isin(self.dynamic_msgs[Msg12318Columns.MMSI])]
         return msg5
 
-    def _load_frame_data(self) -> pd.DataFrame:
+    def _load_dynamic_messages(self) -> pd.DataFrame:
         """
-        Load AIS Messages from a given path or list of paths
-        and return only messages that fall inside given `cell`-bounds.
+        Load AIS Messages of type 1,2,3,18 from a 
+        given path, or list of paths, and return only 
+        messages that fall inside ``self.FRAME``.
         """
         snippets = []
         try:
@@ -335,7 +336,7 @@ class SearchAgent:
         If more than one ship type is found, the first
         one is returned and a warning is logged.
         """
-        st = self.msg5_data[self.msg5_data[Msg5Columns.MMSI] == mmsi]\
+        st = self.static_msgs[self.static_msgs[Msg5Columns.MMSI] == mmsi]\
             [Msg5Columns.SHIPTYPE].values
         st:np.ndarray = np.unique(st)
         if st.size > 1:
@@ -352,7 +353,7 @@ class SearchAgent:
         If more than one ship length is found, the first
         one is returned and a warning is logged.
         """
-        raw = self.msg5_data[self.msg5_data[Msg5Columns.MMSI] == mmsi]\
+        raw = self.static_msgs[self.static_msgs[Msg5Columns.MMSI] == mmsi]\
             [[Msg5Columns.TO_BOW,Msg5Columns.TO_STERN]].values
         sl:np.ndarray = np.sum(raw,axis=1)
         sl = np.unique(sl)
@@ -374,7 +375,7 @@ class SearchAgent:
 
         """
         tpos._is_utm = self._utm
-        filtered = self._time_filter(self.cell_data,tpos.timestamp,self.time_delta)
+        filtered = self._time_filter(self.dynamic_msgs,tpos.timestamp,self.time_delta)
         # Check if filterd result is empty
         if filtered.empty:
             logger.warning("No AIS messages found in time-filtered cell.")
