@@ -1,26 +1,23 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
-from threading import Thread
-from typing import Callable, List, Tuple, Union
-from .cell_manager import NOTDETERMINED, LatLonCellManager, UTMCellManager
+from typing import Callable, List, Union
+from more_itertools import pairwise
+from math import radians, cos, sin, asin, sqrt
 
 import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
 import utm
-from copy import deepcopy
 
 from .logger import Loader, logger
 from .structs import (
-    BoundingBox, Cell, LatLonCell,
-    Position, ShellError,TimePosition,
-    OUTOFBOUNDS,SUB_TO_ADJ, Msg12318Columns, 
-    Msg5Columns,UTMBoundingBox, UTMCell
+    BoundingBox, Position, TimePosition, 
+    Msg12318Columns, Msg5Columns,UTMBoundingBox
 )
 from .targetship import TargetVessel, AISMessage, InterpolationError
-from more_itertools import pairwise
 
 # Exceptions
 class FileLoadingError(Exception):
@@ -39,7 +36,6 @@ def nm2m(nm: float) -> float:
     """Convert nautical miles to meters"""
     return nm*1852
 
-from math import radians, cos, sin, asin, sqrt
 def haversine(lon1, lat1, lon2, lat2, miles = True):
     """
     Calculate the great circle distance in kilometers between two points 
@@ -72,11 +68,10 @@ class SearchAgent:
         self, 
         msg12318file: Union[Path,List[Path]],
         frame: BoundingBox,
-        msg5file: Union[Path,List[Path]] = None,
+        msg5file: Union[Path,List[Path]],
         search_radius: float = 0.5, # in nautical miles
         time_delta: int = 30, # in minutes
         max_tgt_ships: int = 200,
-        n_cells: int = 144,
         filter: Callable[[pd.DataFrame],pd.DataFrame] = lambda x: x
         ) -> None:
        
@@ -94,8 +89,8 @@ class SearchAgent:
                 (See also the `get_cell` function for more info)  
         max_tgt_ships: maximum number of target ships to store
 
-        filter: function to filter out unwanted AIS messages. Default is
-                the identity function.
+        filter: Filter function for input data, applied prior to loading. 
+                Defaults to the identity.
         """
 
         if not isinstance(msg12318file,list):
@@ -103,15 +98,13 @@ class SearchAgent:
         else:
             self.msg12318files = msg12318file
 
-        if msg5file is not None:
-            logger.info("Initializing SearchAgent with msg5file")
-            if not isinstance(msg5file,list):
-                self.msg5files = [msg5file]
-            else:
-                self.msg5files = msg5file
+        if not isinstance(msg5file,list):
+            self.msg5files = [msg5file]
         else:
-            logger.info("Initializing SearchAgent without msg5file")
-            self.msg5files = None
+            self.msg5files = msg5file
+            
+        assert len(self.msg12318files) == len(self.msg5files), \
+            "Number of msg12318 files must be equal to number of msg5 files"
 
         # Spatial bounding box of current AIS message space
         self.FRAME = frame
@@ -126,18 +119,12 @@ class SearchAgent:
         # Search radius in [°] around agent
         self.search_radius = search_radius
         
-        # Number of cells, into which the spatial extent
-        # of AIS records is divided into
-        self.n_cells = n_cells
-        
         # Init cell manager
         if isinstance(frame,UTMBoundingBox):
             self._utm = True
-            self.cell_manager = UTMCellManager(frame,n_cells)
             logger.info("UTM Cell Manager initialized")
         else:
             self._utm = False
-            self.cell_manager = LatLonCellManager(frame,n_cells)
             logger.info("LatLon Cell Manager initialized")
 
         # List of cell-indicies of all 
@@ -162,10 +149,7 @@ class SearchAgent:
         
         self._is_initialized = False
 
-    def init(
-            self, 
-            tpos: TimePosition, *, 
-            supress_warnings=False)-> None:
+    def init(self, tpos: TimePosition)-> None:
         """
         tpos: TimePosition object for which 
                 TargetShips shall be extracted from 
@@ -174,11 +158,8 @@ class SearchAgent:
         tpos._is_utm = self._utm
         pos = tpos.position
         if not self._is_initialized:
-            # Current Cell based on init-position
-            self.cell = self.cell_manager.get_cell_by_position(pos)
-            
             # Load AIS Messages for specific cell
-            self.cell_data = self._load_cell_data(self.cell)
+            self.cell_data = self._load_frame_data(self.FRAME)
             self.msg5_data = self._load_msg5_data()
             self._is_initialized = True
             pos = f"{pos.lat:.3f}N, {pos.lon:.3f}E" if isinstance(tpos.position,Position)\
@@ -188,22 +169,8 @@ class SearchAgent:
                 f"{pos}"
             )
         else:
-            if not supress_warnings:
-                logger.warn(
-                    "TargetShip object is aleady initialized. Re-initializing "
-                    "is slow as it reloads cell data. "
-                )
-                while True:
-                    dec = input("Re-initialize anyways? [y/n]: ")
-                    if not dec in ["y","n"]:
-                        print("Please answer with [y] or [n]")
-                    elif dec == "n": pass
-                    else: break
-                self._is_initialized = False
-                self.init(pos)
-            else:                
-                self._is_initialized = False
-                self.init(pos)
+            logger.info("Target Ship search agent already initialized")
+            return self 
 
 
     def get_ships(self, 
@@ -264,9 +231,6 @@ class SearchAgent:
         
         
         """
-        # Check if cells need buffering
-        if self.n_cells > 1:
-            self._buffer(tpos.position)
         # Get neighbors
         if all_trajectories:
             tgts = self._construct_target_vessels(
@@ -313,7 +277,7 @@ class SearchAgent:
         msg5 = msg5[msg5[Msg5Columns.MMSI].isin(self.cell_data[Msg12318Columns.MMSI])]
         return msg5
 
-    def _load_cell_data(self, cell: Cell) -> pd.DataFrame:
+    def _load_frame_data(self, bb: BoundingBox) -> pd.DataFrame:
         """
         Load AIS Messages from a given path or list of paths
         and return only messages that fall inside given `cell`-bounds.
@@ -323,16 +287,16 @@ class SearchAgent:
         # Spatial filter for cell. Since the data is
         # provided in the lat/lon format, we have to
         # convert the cell to lat/lon as well.
-        if isinstance(cell,UTMCell):
-            cell = cell.to_latlon()
+        if isinstance(bb,UTMBoundingBox):
+            bb = bb.to_latlon()
         spatial_filter = (
-            f"{Msg12318Columns.LON} > {cell.LONMIN} and "
-            f"{Msg12318Columns.LON} < {cell.LONMAX} and "
-            f"{Msg12318Columns.LAT} > {cell.LATMIN} and "
-            f"{Msg12318Columns.LAT} < {cell.LATMAX}"
+            f"{Msg12318Columns.LON} > {bb.LONMIN} and "
+            f"{Msg12318Columns.LON} < {bb.LONMAX} and "
+            f"{Msg12318Columns.LAT} > {bb.LATMIN} and "
+            f"{Msg12318Columns.LAT} < {bb.LATMAX}"
         )
         try:
-            with Loader(cell):
+            with Loader(bb):
                 for file in self.msg12318files:
                     msg12318 = pd.read_csv(file,sep=",")
                     self._n_original += len(msg12318)
@@ -349,52 +313,6 @@ class SearchAgent:
             raise FileLoadingError(e)
 
         return pd.concat(snippets)
-
-    def _cells_for_buffering(self,pos: Position) -> List[LatLonCell]:
-
-        # Find adjacent cells
-        adjacents = self.cell_manager.adjacents(self.cell)
-        # Determine current subcell
-        subcell = self.cell_manager.get_subcell(pos,self.cell)
-        if subcell is NOTDETERMINED:
-            return NOTDETERMINED
-
-        # Find which adjacent cells to pre-buffer
-        # from the static "SUB_TO_ADJ" mapping
-        selection = SUB_TO_ADJ[subcell]
-
-        to_buffer = []
-        for direction in selection:
-            adj = getattr(adjacents,direction)
-            if adj is OUTOFBOUNDS:
-                continue
-            to_buffer.append(adj)
-        
-        return to_buffer
-
-    def _buffer(self, pos: Position) -> None:
-
-        # Get cells that need to be pre-buffered
-        cells = self._cells_for_buffering(pos)
-        # Cancel buffering if vessel is either 
-        # in the exact center of the cell or 
-        # there are no adjacent cells to buffer.
-        if cells is NOTDETERMINED or not cells:
-            return
-
-        def buffer():
-            self.cell_data = pd.concat(
-                self._load_cell_data(cell) for cell in cells
-            )
-            return
-
-        # Start buffering thread if currently buffered
-        # cells are not the same which need buffering
-        eligible_for_buffering = [c.index for c in cells]
-        if not eligible_for_buffering == self._buffered_cell_idx:
-            self._buffered_cell_idx = eligible_for_buffering
-            Thread(target=buffer,daemon=True).start()
-        return
             
     def _build_kd_tree(self, data: pd.DataFrame) -> cKDTree:
         """
@@ -406,7 +324,7 @@ class SearchAgent:
         """
         assert Msg12318Columns.LAT in data and Msg12318Columns.LON in data, \
             "Input dataframe has no `lat` or `lon` columns"
-        if isinstance(self.cell_manager,UTMCellManager):
+        if isinstance(self.FRAME,UTMBoundingBox): 
             eastings, northings, *_ = utm.from_latlon(
                 data[Msg12318Columns.LAT].values,
                 data[Msg12318Columns.LON].values
