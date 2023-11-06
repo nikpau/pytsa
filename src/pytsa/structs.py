@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 import ciso8601
-from typing import Dict, Tuple, List, Union
+from typing import List, Union
 import utm
 
 Latitude  = float
@@ -13,10 +13,6 @@ Longitude = float
 
 Position = namedtuple("Position", ["lat","lon"])
 UTMPosition = namedtuple("UTMPosition", ["northing","easting"])
-
-class _OUT_OF_BOUNDS_TYPE:
-    pass
-OUTOFBOUNDS = _OUT_OF_BOUNDS_TYPE()
 
 class NONAME_TYPE:
     pass
@@ -158,18 +154,6 @@ class UTMCell(UTMBoundingBox):
     
 Cell = Union[LatLonCell, UTMCell]
 
-@dataclass(frozen=True)
-class Point:
-    x: float
-    y: float
-
-    def is_on_left_of(self, other: Point)-> bool:
-        return self.x < other.x
-        
-    def is_above_of(self, other: Point) -> bool:
-        return self.y > other.y
-    
-
 class TimePosition:
     """
     Time and position object
@@ -263,25 +247,3 @@ class Msg5Columns:
     TO_STERN = "to_stern"
     TO_PORT = "to_port"
     TO_STARBOARD = "to_starboard"
-
-@dataclass
-class AdjacentCells:
-    N:  Union[LatLonCell, _OUT_OF_BOUNDS_TYPE]
-    NE: Union[LatLonCell, _OUT_OF_BOUNDS_TYPE]
-    E:  Union[LatLonCell, _OUT_OF_BOUNDS_TYPE]
-    SE: Union[LatLonCell, _OUT_OF_BOUNDS_TYPE]
-    S:  Union[LatLonCell, _OUT_OF_BOUNDS_TYPE]
-    SW: Union[LatLonCell, _OUT_OF_BOUNDS_TYPE]
-    W:  Union[LatLonCell, _OUT_OF_BOUNDS_TYPE]
-    NW: Union[LatLonCell, _OUT_OF_BOUNDS_TYPE]
-
-
-# Map from subcells to 
-# adjacent cells to be
-# pre-buffered.
-SUB_TO_ADJ: Dict[int,Tuple[str,...]] = {
-    1: ("W","NW","N"),
-    2: ("N","NE","E"),
-    3: ("S","SW","W"),
-    4: ("E","SE","S")
-}
