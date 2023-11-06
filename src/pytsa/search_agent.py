@@ -10,6 +10,7 @@ from math import radians, cos, sin, asin, sqrt
 import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
+import multiprocessing as mp
 import utm
 
 from pytsa.logger import Loader, logger
@@ -211,7 +212,7 @@ class SearchAgent:
             neigbors = self._get_neighbors(tpos)
             tgts = self._construct_target_vessels(neigbors, tpos)
 
-        tgts, rejected = self.split(tgts,tpos,overlap_tpos,n=2)
+        tgts, rejected = self._split_impl(tgts,tpos,overlap_tpos,n=2)
         # Contruct Splines for all target ships
         tgts = self._construct_splines(tgts,mode=interpolation)
         rejected = self._construct_splines(rejected,mode=interpolation)
@@ -445,6 +446,7 @@ class SearchAgent:
                     tracks=[[msg]]
                 )
             else:
+                # Split track if time or spatial difference is too large
                 if self._gap_too_large(
                     max_tgap,max_dgap,targets[mmsi].tracks[-1][-1],msg):
                     targets[mmsi].tracks.append([])
@@ -535,16 +537,72 @@ class SearchAgent:
                     )
                     msg_t1.lon = lont1
                     msg_t1.lat = latt1
-    
 
     def split(self, 
+              targets: Targets, 
+              tpos: TimePosition,
+              overlap_tpos: bool = True,
+              sd: float = 0.1,
+              minlen: int = 100,
+              njobs: int = 4) -> tuple[Targets,Targets]:
+        """
+        Split the given target ships into two groups:
+        - Accepted: Target ships that are eligible for further processing
+        - Rejected: Target ships that are not eligible for further processing
+        
+        `overlap_tpos` is a boolean flag indicating whether
+        we only want to return vessels, whose track overlaps
+        with the queried timestamp. If `overlap_tpos` is False,
+        all vessels whose track is within the time delta of the
+        queried timestamp are returned.
+        
+        """
+        if njobs == 1:
+            a,r,_n = self._split_impl(targets,tpos,overlap_tpos,sd,minlen)
+            # Number of target ships after filtering
+            n_rejected = sum(len(r.tracks) for r in r.values())
+            logger.info(
+                f"Filtered {_n} trajectories. "
+                f"{(n_rejected)/_n*100:.2f}% rejected."
+            )
+            return a,r
+        # Split the target ships into `njobs` chunks
+        items = list(targets.items())
+        mmsis, target_ships = zip(*items)
+        mmsi_chunks = np.array_split(mmsis,njobs)
+        target_ship_chunks = np.array_split(target_ships,njobs)
+        chunks = []
+        for mmsi_chunk, target_ship_chunk in zip(mmsi_chunks,target_ship_chunks):
+            chunks.append(dict(zip(mmsi_chunk,target_ship_chunk)))
+        
+        with mp.Pool(njobs) as pool:
+            results = pool.starmap(
+                self._split_impl,
+                [(chunk,tpos,overlap_tpos,sd,minlen) for chunk in chunks]
+            )
+        accepted, rejected, _n = zip(*results)
+        a_out, r_out = {}, {}
+        for a,r in zip(accepted,rejected):
+            a_out.update(a)
+            r_out.update(r)
+            
+        # Number of target ships after filtering
+        n_rejected = sum(len(r.tracks) for r in r_out.values())
+        logger.info(
+            f"Filtered {sum(_n)} trajectories. "
+            f"{(n_rejected)/sum(_n)*100:.2f}% rejected."
+        )
+        
+        return a_out, r_out
+    
+
+    def _split_impl(self, 
             targets: Targets, 
             tpos: TimePosition,
             overlap_tpos: bool = True,
             sd: float = 0.1,
-            minlen: int = 100) -> tuple[list[TargetVessel],list[TargetVessel]]:
+            minlen: int = 100) -> tuple[Targets,Targets,int]:
         """
-        
         Also remove vessels whose track lies outside
         the queried timestamp.
         
@@ -560,18 +618,18 @@ class SearchAgent:
 
 
         nships = len(targets)
-        n = 0 # Number of trajectories before split
+        _n = 0 # Number of trajectories before split
         for i, (_,target_ship) in enumerate(targets.items()):
             logger.info(f"Filtering target ship {i+1}/{nships}")
             for track in target_ship.tracks:
-                n += 1
+                _n += 1
                 # Remove vessels whose track is shorter than `minlen`
-                if self._track_length_filter(track,minlen):
+                if self._too_few_obs(track,minlen):
                     self._copy_track(target_ship,rejected,track)
                     continue
                 
                 # Remove vessels whose track has a larger standard deviation
-                elif self._track_sd_filter(track,sd):
+                elif self._too_small_spatial_deviation(track,sd):
                     self._copy_track(target_ship,rejected,track)
                     continue
                 
@@ -581,14 +639,9 @@ class SearchAgent:
                 else:
                     self._copy_track(target_ship,accepted,track)
             
-        # Number of target ships after filtering
-        n_rejected = [len(v.tracks) for v in rejected.values()]
-        logger.info(
-            f"Filtered {n} trajectories. "
-            f"{(n_rejected)/n*100:.2f}% rejected."
-        )
 
-        return accepted, rejected
+        return accepted, rejected, _n
+                        
     
     def _copy_track(self,
                     vessel: TargetVessel, 
@@ -614,14 +667,14 @@ class SearchAgent:
         t1.tracks.extend(t2.tracks)
         return t1
 
-    def _track_length_filter(self, track: list[AISMessage], n: int) -> bool:
+    def _too_few_obs(self, track: list[AISMessage], n: int) -> bool:
         """
         Return True if the length of the track of the given vessel
         is smaller than `n`.
         """
         return len(track) < n
     
-    def _track_sd_filter(self, track: list[AISMessage], sd: float) -> bool:
+    def _too_small_spatial_deviation(self, track: list[AISMessage], sd: float) -> bool:
         """
         Return True if the summed standard deviation of lat/lon 
         of the track of the given vessel is smallerw than `sd`.
