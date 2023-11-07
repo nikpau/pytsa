@@ -1,6 +1,5 @@
 from itertools import cycle
 import logging
-from os import get_terminal_size
 import sys
 from threading import Thread
 import time
@@ -78,7 +77,7 @@ ch.setFormatter(formatter)
 logger.addHandler(ch)
 
 class Loader:
-    def __init__(self, cell):
+    def __init__(self, bb):
         """
         A loader-like context manager
 
@@ -88,8 +87,8 @@ class Loader:
             timeout (float, optional): Sleep time between prints. Defaults to 0.1.
         """
         self.desc = (
-            f"Buffering cell from {cell.LATMIN:.3f}°N-{cell.LATMAX:.3f}°N "
-            f"and {cell.LONMIN:.3f}°E-{cell.LONMAX:.3f}°E"
+            f"Buffering cell from {bb.LATMIN:.3f}°N-{bb.LATMAX:.3f}°N "
+            f"and {bb.LONMIN:.3f}°E-{bb.LONMAX:.3f}°E"
         )
         self.timeout = 0.1
 

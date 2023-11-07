@@ -3,8 +3,9 @@ from __future__ import annotations
 from collections import namedtuple
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 import ciso8601
-from typing import Dict, Tuple, List, Union
+from typing import List, Union
 import utm
 
 Latitude  = float
@@ -13,13 +14,26 @@ Longitude = float
 Position = namedtuple("Position", ["lat","lon"])
 UTMPosition = namedtuple("UTMPosition", ["northing","easting"])
 
-class _OUT_OF_BOUNDS_TYPE:
+class NONAME_TYPE:
     pass
-OUTOFBOUNDS = _OUT_OF_BOUNDS_TYPE()
+NONAME = NONAME_TYPE()
+
+class NOINDEX_TYPE:
+    pass
+NOINDEX = NOINDEX_TYPE()
 
 class ShellError(Exception):
     pass
 
+class ShipType(Enum):
+    """
+    Dataclass to store the type of vessel
+    as defined by the AIS standard.
+    """
+    PASSENGER = range(60,70)
+    CARGO = range(70,80)
+    TANKER = range(80,90)
+    OTHER = range(90,100)
 
 @dataclass
 class LatLonBoundingBox:
@@ -33,6 +47,8 @@ class LatLonBoundingBox:
     LATMAX: Latitude
     LONMIN: Longitude
     LONMAX: Longitude
+    name: str = NONAME
+    number: int = NOINDEX
     
     def __repr__(self) -> str:
         return (
@@ -41,7 +57,11 @@ class LatLonBoundingBox:
             f"LATMAX={self.LATMAX:.3f},"
             f"LONMIN={self.LONMIN:.3f},"
             f"LONMAX={self.LONMAX:.3f})>"
-        )
+        )    
+        
+    def __str__(self) -> str:
+        return self.name
+
     
     def to_utm(self) -> UTMBoundingBox:
         """
@@ -60,7 +80,9 @@ class LatLonBoundingBox:
             min_northing=min_northing,
             max_northing=max_northing,
             zone_number=zn,
-            zone_letter=zl
+            zone_letter=zl,
+            name=self.name,
+            number=self.number
         )
 
 @dataclass
@@ -75,7 +97,9 @@ class UTMBoundingBox:
     max_northing: float
     zone_number: int
     zone_letter: str
-
+    name: str = NONAME
+    number: int = NOINDEX
+    
     def __repr__(self) -> str:
         return (
             "<UTMBoundingBox("
@@ -86,6 +110,9 @@ class UTMBoundingBox:
             f"zone_number={self.zone_number},"
             f"zone_letter={self.zone_letter})>"
         )
+        
+    def __str__(self) -> str:
+        return self.name
 
     def to_latlon(self) -> LatLonBoundingBox:
         """
@@ -104,7 +131,8 @@ class UTMBoundingBox:
             LATMIN=latmin,
             LATMAX=latmax,
             LONMIN=lonmin,
-            LONMAX=lonmax
+            LONMAX=lonmax,
+            name=self.name
         )
 # Bounding boxes ------------------------------------
 BoundingBox = Union[LatLonBoundingBox, UTMBoundingBox]
@@ -112,31 +140,19 @@ BoundingBox = Union[LatLonBoundingBox, UTMBoundingBox]
 # Cells for the grid ---------------------------------
 @dataclass
 class LatLonCell(LatLonBoundingBox):
-    index: int
+    index: int = NOINDEX
     
     def __repr__(self) -> str:
         return f"{super().__repr__()}|idx={self.index}"
     
 @dataclass
 class UTMCell(UTMBoundingBox):
-    index: int
+    index: int = NOINDEX
     
     def __repr__(self) -> str:
         return f"{super().__repr__()}|idx={self.index}"
     
 Cell = Union[LatLonCell, UTMCell]
-
-@dataclass(frozen=True)
-class Point:
-    x: float
-    y: float
-
-    def is_on_left_of(self, other: Point)-> bool:
-        return self.x < other.x
-        
-    def is_above_of(self, other: Point) -> bool:
-        return self.y > other.y
-    
 
 class TimePosition:
     """
@@ -198,10 +214,12 @@ class TimePosition:
             return Position(self.lat,self.lon)
 
 @dataclass
-class DataColumns:
+class Msg12318Columns:
     """
-    Data columns of the 
-    source file
+    Data columns for message 1,2,3 and 18
+    source files. If your decoded file features
+    different column names,
+    please change them here.
     """
     MMSI: str = "MMSI"
     LAT: str = "lat"
@@ -213,23 +231,19 @@ class DataColumns:
     TURN: str = "turn"
 
 @dataclass
-class AdjacentCells:
-    N:  Union[LatLonCell, _OUT_OF_BOUNDS_TYPE]
-    NE: Union[LatLonCell, _OUT_OF_BOUNDS_TYPE]
-    E:  Union[LatLonCell, _OUT_OF_BOUNDS_TYPE]
-    SE: Union[LatLonCell, _OUT_OF_BOUNDS_TYPE]
-    S:  Union[LatLonCell, _OUT_OF_BOUNDS_TYPE]
-    SW: Union[LatLonCell, _OUT_OF_BOUNDS_TYPE]
-    W:  Union[LatLonCell, _OUT_OF_BOUNDS_TYPE]
-    NW: Union[LatLonCell, _OUT_OF_BOUNDS_TYPE]
-
-
-# Map from subcells to 
-# adjacent cells to be
-# pre-buffered.
-SUB_TO_ADJ: Dict[int,Tuple[str,...]] = {
-    1: ("W","NW","N"),
-    2: ("N","NE","E"),
-    3: ("S","SW","W"),
-    4: ("E","SE","S")
-}
+class Msg5Columns:
+    """
+    Data columns for message 5
+    source files. 
+    If your decoded file features
+    different column names,
+    please change them here.
+    """
+    MMSI: str = "MMSI"
+    SHIPTYPE = "ship_type"
+    SHIPNAME = "shipname"
+    CALLSIGN = "callsign"
+    TO_BOW = "to_bow"
+    TO_STERN = "to_stern"
+    TO_PORT = "to_port"
+    TO_STARBOARD = "to_starboard"

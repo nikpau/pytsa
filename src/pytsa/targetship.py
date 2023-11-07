@@ -6,34 +6,19 @@ A provided geographical area will be split into
 evenly-sized grids
 """
 from __future__ import annotations
+
+import os
 from dataclasses import dataclass
+from datetime import datetime
+from typing import List, Union
 
-from datetime import datetime, timedelta
-from threading import Thread
-from typing import Callable, List, Tuple, Union
-from .cell_manager import NOTDETERMINED, LatLonCellManager, UTMCellManager
-import warnings
-
-import ciso8601
 import numpy as np
-import pandas as pd
-import scipy.integrate
-import scipy.linalg
-import scipy.optimize
-from matplotlib import pyplot as plt
-from scipy.sparse import csc_matrix
-from scipy.sparse.linalg import spilu
-from scipy.spatial import cKDTree
 import utm
-import warnings
-
-from .logger import Loader, logger
-from .structs import (
-    BoundingBox, Cell, LatLonCell, Point,
-    Position, ShellError,TimePosition,
-    OUTOFBOUNDS,SUB_TO_ADJ, DataColumns, 
-    UTMBoundingBox, UTMCell
-)
+from matplotlib import pyplot as plt
+from matplotlib.gridspec import GridSpec
+from scipy.interpolate import InterpolatedUnivariateSpline, interp1d
+from pytsa.structs import ShipType
+from pytsa.logger import logger
 
 # Settings for numerical integration
 Q_SETTINGS = dict(epsabs=1e-13,epsrel=1e-13,limit=500)
@@ -43,16 +28,118 @@ Q_SETTINGS = dict(epsabs=1e-13,epsrel=1e-13,limit=500)
 # Type aliases
 Latitude = float
 Longitude = float
+MMSI = int
 
 # Constants
 PI = np.pi
 
 # Exceptions
-class FileLoadingError(Exception):
+
+class OutofTimeBoundsError(Exception):
     pass
 
-class SplineInterpolationError(Exception):
+class InterpolationError(Exception):
     pass
+
+
+class TrackSplines:
+    """
+    Class for performing separate univariate
+    spline interpolation on a given AIS track.
+
+    This class provides the following attributes:
+        - lat: Spline interpolation of latitude
+        - lon: Spline interpolation of longitude
+        - northing: Spline interpolation of northing
+        - easting: Spline interpolation of easting
+        - COG: Spline interpolation of course over ground
+        - SOG: Spline interpolation of speed over ground
+        - ROT: Spline interpolation of rate of turn
+        - dROT: Spline interpolation of change of rate of turn
+
+        All splines are univariate splines, with time as the
+        independent variable.
+    """
+    def __init__(self, track: List[AISMessage]) -> None:
+        self.track = track
+        self._attach_splines()
+
+    def _attach_splines(self) -> None:
+        """
+        Perform spline interpolation on the
+        AIS track and attach the results to
+        the class as attributes.
+        """
+        timestamps = [int(msg.timestamp) for msg in self.track]
+
+        self.lat = InterpolatedUnivariateSpline(
+            timestamps, [msg.lat for msg in self.track]
+        )
+        self.lon = InterpolatedUnivariateSpline(
+            timestamps, [msg.lon for msg in self.track]
+        )
+        self.northing = InterpolatedUnivariateSpline(
+            timestamps, [msg.northing for msg in self.track]
+        )
+        self.easting = InterpolatedUnivariateSpline(
+            timestamps, [msg.easting for msg in self.track]
+        )
+        self.COG = InterpolatedUnivariateSpline(
+            timestamps, [msg.COG for msg in self.track]
+        )
+        self.SOG = InterpolatedUnivariateSpline(
+            timestamps, [msg.SOG for msg in self.track]
+        )
+        self.ROT = InterpolatedUnivariateSpline(
+            timestamps, [msg.ROT for msg in self.track]
+        )
+        self.dROT = InterpolatedUnivariateSpline(
+            timestamps, [msg.dROT for msg in self.track]
+        )
+
+class TrackLinear:
+    """
+    Linear interpolation of a given AIS track.
+    """
+    def __init__(self, track: List[AISMessage]) -> None:
+        self.track = track
+        self._attach_linear()
+
+    def _attach_linear(self) -> None:
+        """
+        Perform linear interpolation on the
+        AIS track and attach the results to
+        the class as attributes.
+        """
+        timestamps = [msg.timestamp for msg in self.track]
+        
+        self.lat = interp1d(
+            timestamps, [msg.lat for msg in self.track]
+        )
+        self.lon = interp1d(
+            timestamps, [msg.lon for msg in self.track]
+        )
+        self.northing = interp1d(
+            timestamps, [msg.northing for msg in self.track]
+        )
+        self.easting = interp1d(
+            timestamps, [msg.easting for msg in self.track]
+        )
+        self.COG = interp1d(
+            timestamps, [msg.COG for msg in self.track]
+        )
+        self.SOG = interp1d(
+            timestamps, [msg.SOG for msg in self.track]
+        )
+        self.ROT = interp1d(
+            timestamps, [msg.ROT for msg in self.track]
+        )
+        # Derivative of ROT is not available in linear interpolation
+        # as there are too few points to perform numerical differentiation.
+        # Instead, we set it to zero.
+        self.dROT = interp1d(
+            timestamps, [0.0 for _ in self.track]
+        )
 
 
 @dataclass
@@ -60,13 +147,13 @@ class AISMessage:
     """
     AIS Message object
     """
-    sender: int
-    timestamp: datetime
+    sender: MMSI
+    timestamp: datetime | float
     lat: Latitude
     lon: Longitude
     COG: float # Course over ground [degrees]
     SOG: float # Speed over ground [knots]
-    ROT: float # Rate of turn [degrees/minute]
+    ROT: float = None # Rate of turn [degrees/minute]
     dROT: float = None # Change of ROT [degrees/minute²]
     _utm: bool = False
 
@@ -85,8 +172,11 @@ class AISMessage:
         """
         Handles the Rate of Turn (ROT) value
         """
-        try: rot = float(rot) 
-        except: return None
+        try: 
+            rot = float(rot) 
+        except: 
+            return None
+        
         sign = np.sign(rot)
         if abs(rot) == 127 or abs(rot) == 128:
             return None
@@ -95,836 +185,727 @@ class AISMessage:
         
 
 class TargetVessel:
+    """
+    Central object for the pytsa package. It holds
+    a collection of functions for working with the 
+    AIS messages belonging to it.
+    
+    Attributes:
+        - ts: Timestamp for which to observe the vessel
+        - mmsi: Maritime Mobile Service Identity
+        - track: List of AIS messages belonging to the
+                target vessel
+        - ship_type: Ship type of the target vessel
+        - length: Length of the target vessel
+                
+    Methods:
+        - interpolate(): Construct smoothed univariate splines
+                for northings, eastings, course over ground,
+                speed over ground, rate of turn and change of
+                rate of turn contained in the vessels' track.
+                
+                If the caller wants to use linear interpolation
+                instead of splines, the lininterp flag can be set
+                to True.
+                
+        - observe_at_query(): Returns the 6-tuple of [northing,
+                easting, COG, SOG, ROT, dROT] at the timestamp 
+                the object was initialized with.
+                The timestamp should lie within the
+                track's temporal bounds.
+                
+                Currently, there is no check 
+                for the timestamp being within the track's
+                temporal bounds, which can lead to errors.
+                If you want to use this function, please
+                make sure that the timestamp is within bounds.
+                
+                You can also pass a timestamp to the function
+                to observe the vessel at a different timestamp.
+                Please note that there is still no check for
+                the timestamp being within the track's bounds.
+                
+        - observe_interval(): Returns an array of 7-tuples of [northing,
+                easting, COG, SOG, ROT, dROT, timestamp] for 
+                the track between the given start and end timestamps,
+                with the given interval in [seconds].
+                
+        - fill_rot(): Fill out missing rotation data and first
+                derivative of rotation by inferring it from the
+                previous and next AIS messages' headings.
+        
+        - overwrite_rot(): Overwrite the ROT and dROT values with
+                the values from COG.
+        
+        - find_shell(): Find the two AIS messages encompassing
+                the objects' track elements and save them
+                as attributes.
+        
+        - ts_to_unix(): Convert the vessel's timestamp for
+                each track element to unix time.
+    """    
     
     def __init__(
         self,
         ts: Union[str,datetime], 
-        mmsi: int, 
-        track: List[AISMessage],
-        v=True) -> None:
+        mmsi: MMSI, 
+        tracks: List[List[AISMessage]],
+        ship_type: ShipType = None,
+        length: float = None
+        ) -> None:
         
         self.ts = ts
         self.mmsi = mmsi 
-        self.track = track
-        self.v = v
-        self.fail_count = 0
-        self._fill_rot()
+        self.tracks = tracks
+        self.ship_type = ship_type
+        self.length = length
+        self.lininterp = False # Linear interpolation flag
+        
+        # Indicate if the interpolation function have 
+        # been attached to the object
+        self.interpolation: list[TrackSplines] | list[TrackLinear] | None = None
+    
+    def interpolate(self,mode: str) -> None:
+        """
+        Construct splines for the target vessel
+        """
+        assert mode in ["linear","spline","auto"],\
+            "Mode must be either 'linear', 'spline' or 'auto'."
+        self.interpolation = []
+        for track in self.tracks:
+            if mode == "auto":
+                try:
+                    if self.lininterp:
+                        self.interpolation.append(TrackLinear(track))
+                    else:
+                        self.interpolation.append(TrackSplines(track))
+                except Exception as e:
+                    raise InterpolationError(
+                        f"Could not interpolate the target vessel trajectory:\n{e}."
+                    )
+            elif mode == "linear":
+                try:
+                    self.interpolation.append(TrackLinear(track))
+                except Exception as e:
+                    raise InterpolationError(
+                        f"Could not interpolate the target vessel trajectory:\n{e}."
+                    )
+            elif mode == "spline":
+                try:
+                    self.interpolation.append(TrackSplines(track))
+                except Exception as e:
+                    raise InterpolationError(
+                        f"Could not interpolate the target vessel trajectory:\n{e}."
+                    )
 
-    def observe(self, skip_linear = False) -> np.ndarray:
+    def observe_at_query(self, time: datetime | str | None = None) -> np.ndarray:
         """
         Infers
+            - Northing (meters),
+            - Easting (meters),
             - Course over ground (COG) [degrees],
             - Speed over ground (SOG) [knots],
-            - Latitude (northing) [degrees] (meters),
-            - Longitude (easting) [degrees] (meters),
             - Rate of turn (ROT) [degrees/minute],
             - Change of ROT [degrees/minute²],
             
-        from two AIS records encompassing the provided
-        timestamp `self.ts`. Those two messages
-        are used to perform a spline interpolation.
-        If the spline interpolation fails, a linear 
-        interpolation is performed instead.
+        from univariate splines for the timestamp, 
+        the object was initialized with.
 
-        If `skip_linear` is set to `True`, the linear
-        interpolation will be skipped and a
-        `SplineInterpolationError` will be raised instead.
-        This can be seen as a "strict" mode.
         """
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            return self._observe(skip_linear)
-
-    def _observe(self, skip_linear = False) -> np.ndarray:
-
-        try:
-            return self._observe_spline()
-        except Exception as e:
-            if skip_linear:
-                raise SplineInterpolationError(
-                    "Linear interpolation was skipped."
+        assert self.interpolation is not None,\
+            "Interpolation has not been run. Call interpolate() first."
+        # Convert query timestamp to unix time
+        if time is not None:
+            ts = time.timestamp()
+        else:
+            ts = self.ts.timestamp()
+            
+        # Check if the query timestamp is within the
+        # track's timestamps
+        for i,track in enumerate(self.tracks):
+            if self._is_in_interval(ts,[msg.timestamp for msg in track]):
+                break
+            if i == len(self.tracks)-1:
+                raise OutofTimeBoundsError(
+                    "Query timestamp is not within the track's timestamps."
                 )
-            else:
-                self.fail_count += 1
-                logger.warning(
-                    f"Spline interpolation failed: {e}\n"
-                    "Falling back to linear interpolation. "
-                    f"Fail count: {self.fail_count}"
-                    )
-                return self._observe_linear()
 
-    def _observe_linear(self) -> np.ndarray:
+        # Return the observed values from the splines
+        # at the given timestamp
+        # Returns a 1x4 array:
+        # [northing, easting, COG, SOG]
+        return np.array([
+            self.interpolation[i].northing(ts),
+            self.interpolation[i].easting(ts),
+            # Take the modulo 360 to ensure that the
+            # course over ground is in the interval [0,360]
+            self.interpolation[i].COG(ts) % 360,
+            self.interpolation[i].SOG(ts)
+        ])
+
+    def observe_interval(
+            self, 
+            start: datetime, 
+            end: datetime, 
+            interval: int
+            ) -> np.ndarray:
         """
-        Fallback method in case the spline interpolation
-        fails. It is a simple linear interpolation between
-        the two AIS messages encompassing the provided timestamp.
+        Infers
+            - Northing (meters),
+            - Easting (meters),
+            - Course over ground (COG) [degrees],
+            - Speed over ground (SOG) [knots],
+            - Rate of turn (ROT) [degrees/minute],
+            - Change of ROT [degrees/minute²],
+
+        from univariate splines for the track between
+        the given start and end timestamps, with the
+        given interval in [seconds].
         """
-        if isinstance(self.ts,str):
-            self.ts = ciso8601.parse_datetime(self.ts)
-        
-        m1, m2 = self._find_shell()
-        if m1._utm and m2._utm:
-            p1, p2 = Point(m1.easting,m1.northing), Point(m2.easting,m2.northing)
+        assert self.interpolation is not None,\
+            "Interpolation has not been run. Call interpolate() first."
+        # Convert query timestamps to unix time
+        if isinstance(start, datetime):
+            start = start.timestamp()
+            end = end.timestamp()
+
+        # Check if the start timestamp is within the
+        # track's timestamps
+        for i,track in enumerate(self.tracks):
+            if self._is_in_interval(start,track):
+                break
+            if i == len(self.tracks)-1:
+                raise OutofTimeBoundsError(
+                    "Start timestamp is not within the track's timestamps. "
+                    "MMSI: {}".format(self.mmsi)
+                )
+        # Check if the end timestamp is within the
+        # track's timestamps
+        for j,track in enumerate(self.tracks):
+            if self._is_in_interval(end,track):
+                break
+            if j == len(self.tracks)-1:
+                raise OutofTimeBoundsError(
+                    "End timestamp is not within the track's timestamps. "
+                    "MMSI: {}".format(self.mmsi)
+                )
+
+        # Create a list of timestamps between the start and end
+        # timestamps, with the given interval
+        timestamps = np.arange(start, end, interval)
+
+        # Start and end points of the interval
+        # lie within the same track
+        if i == j:
+            # Return the observed values from the interpolation
+            # at the given timestamps
+            # Returns a Nx4 array:
+            # [northing, easting, COG, SOG, timestamp]
+            preds: np.ndarray = np.array([
+                self.interpolation[i].northing(timestamps),
+                self.interpolation[i].easting(timestamps),
+                # Take the modulo 360 of the COG to get the
+                # heading to be between 0 and 360 degrees
+                self.interpolation[i].COG(timestamps) % 360,
+                self.interpolation[i].SOG(timestamps),
+                timestamps
+            ])
+            return preds.T
+        # Start and end points of the interval
+        # lie in different tracks
         else:
-            p1, p2 = Point(m1.lon,m1.lat), Point(m2.lon,m2.lat)
-        k1, k2 = m1.COG, m2.COG
-        
-        # Time difference between queried date
-        # and first shell point
-        dt = (self.ts - m1.timestamp).total_seconds()
-        
-        # Time difference between first and second shell point
-        dt2 = (m2.timestamp - m1.timestamp).total_seconds()
-        
-        # Linear interpolation
-        i_EAST = p1.x + (p2.x - p1.x) * dt / dt2
-        i_NORTH = p1.y + (p2.y - p1.y) * dt / dt2
-        
-        # Linear interpolation of COG
-        i_COG = k1 + (k2 - k1) * dt / dt2
-        
-        # Linear interpolation of SOG
-        i_SOG = m1.SOG + (m2.SOG - m1.SOG) * dt / dt2
-
-        # Linear interpolation of ROT
-        if m1.ROT is None or m2.ROT is None:
-            i_ROT = 0
-        else:
-            i_ROT = m1.ROT + (m2.ROT - m1.ROT) * dt / dt2
-
-        # Linear interpolation of dROT
-        if m1.dROT is None or m2.dROT is None:
-            i_dROT = 0
-        else:
-            i_dROT = m1.dROT + (m2.dROT - m1.dROT) * dt / dt2
-
-        # Either [Lat,Lon,COG,SOG] or [Northing,Easting,COG,SOG]
-        return np.array([i_NORTH,i_EAST,i_COG,i_SOG,i_ROT,i_dROT])
-        
-    def _observe_spline(self) -> np.ndarray:
-        """
-        Two AIS messages, `m1` and `m2`, 
-        which I call ``shell``, are used to infer the vessels 
-        trajectory anywhere betweeen using a cubic spline 
-        interpolation and information about the ships' position 
-        and orientation in time:
-        
-        Let p_A(x) be a thrid degree polynomial with coeficients a ∈ A.
-        
-        We will construct a spline such that:
-
-            p_a(x1) = y1
-            p_a(x2) = y2
-            dp_a/dx1 = tan(k1)
-            dp_a/dx2 = tan(k2)
-            
-        with ki, i = 1,2, being the course over ground at
-        point (xi,yi) in radians.
-        """
-        if isinstance(self.ts,str):
-            self.ts = ciso8601.parse_datetime(self.ts)
-        
-        m1, m2 = self._find_shell()
-        if m1._utm and m2._utm:
-            p1, p2 = Point(m1.easting,m1.northing), Point(m2.easting,m2.northing)
-        else:
-            p1, p2 = Point(m1.lon,m1.lat), Point(m2.lon,m2.lat)
-        k1, k2 = m1.COG, m2.COG
-        
-        # Time difference between queried date
-        # and first shell point in seconds
-        delta_t = (self.ts - m1.timestamp).seconds
-        
-        # Time difference between both shell points
-        delta_t_shell = (m2.timestamp - m1.timestamp).seconds
-        
-        # Fraction traveled in between shell points
-        frac = delta_t/delta_t_shell
-
-        # Calculate coefficients of 3rd degree polynomial 
-        # connecting the shell points under
-        # constraints described above. 
-        s, s_prime, pl_int, pathlen, _swapped = self.spline(p1,p2,k1,k2)
-        
-        # From here on, inferred variables will start with "i_"
-        
-        # Speed over ground is the average between the
-        # two shell speeds weighted by the distance covered on
-        # the connecting spline
-        i_SOG = frac*m2.SOG + (1-frac)*m1.SOG
-
-        # Rate of turn is the average between the
-        # two shell rates of turn weighted by the distance covered on
-        # the connecting spline
-
-        # We need to be careful here because the rate of turn
-        # and its first derivative may not be defined for
-        # both shell points. If it is not,
-        # we will set the rate of turn to 0.
-        if m2.ROT is None or m1.ROT is None:
-            i_ROT = 0
-        else:
-            i_ROT = frac*m2.ROT + (1-frac)*m1.ROT
-
-        # First derivative of the rate of turn
-        if m2.dROT is None or m1.dROT is None:
-            i_dROT = 0
-        else:
-            i_dROT = frac*m2.dROT + (1-frac)*m1.dROT
-        
-        # Longitude will be estimated by solving for the 
-        # upper integration limit of the path length integral 
-        # for the spline such that the length is equal to the
-        # the distance traveled on the connecting spline
-        if not _swapped:
-            i_EAST = self._lon_along_path(
-                pl_int,p1,frac*pathlen,p1.is_on_left_of(p2)
+            logger.warning(
+                "Start and end points of the interval lie in different tracks. "
+                "Results may be inaccurate. MMSI: %s".format(self.mmsi)
             )
-            i_NORTH = s(i_EAST)
+            # Combine the tracks into one list
+            tracks = self.tracks[i:j+1]
+            tracks = [msg for track in tracks for msg in track]
+            interp_ = TrackSplines(tracks) if not self.lininterp else TrackLinear(tracks)
+            # Return the observed values from the interpolation
+            # at the given timestamps
+            # Returns a Nx4 array:
+            # [northing, easting, COG, SOG, timestamp]
+            preds: np.ndarray = np.array([
+                interp_.northing(timestamps),
+                interp_.easting(timestamps),
+                # Take the modulo 360 of the COG to get the
+                # heading to be between 0 and 360 degrees
+                interp_.COG(timestamps) % 360,
+                interp_.SOG(timestamps),
+                timestamps
+            ])
+            return preds.T
             
-            # Course over ground is the arc tangent
-            # of the first derivative of our spline
-            # shifted by pi/2 due to spline constraints
-            if p1.is_on_left_of(p2):
-                i_COG = -np.arctan(s_prime(i_EAST)) + PI/2
-            else: 
-                i_COG = -np.arctan(s_prime(i_EAST)) - PI/2
-            
-            # Transform from [-pi,+pi] rad to [0,360] deg
-            i_COG = (i_COG % (2*PI))* 180/PI
-
-        else: 
-            i_NORTH = self._lat_along_path(
-                pl_int,p1,frac*pathlen,p1.is_above_of(p2)
-            )
-            i_EAST = s(i_NORTH)
-            
-            # Course over ground is the arc tangent
-            # of the first derivative of our spline
-            if not p1.is_above_of(p2):
-                i_COG = np.arctan(s_prime(i_NORTH))
-            else:
-                i_COG = np.arctan(s_prime(i_NORTH)) - PI
-            
-            # Transform from [-pi,+pi] rad to [0,360] deg
-            i_COG = (i_COG % (2*PI))* 180/PI
-
-        # Either [Lat,Lon,COG,SOG,...] or [Northing,Easting,COG,SOG,...]
-        obs = np.array([i_NORTH,i_EAST,i_COG,i_SOG,i_ROT,i_dROT])
-
-        if self.v:
-            self._v(s,obs,m1,m2,_swapped)
-        
-        return obs
     
-    @staticmethod
-    def _lon_along_path(f: Callable[[Latitude],float], 
-        reference: Point, dist: float, flip_limits: bool)-> Longitude:
+    def _is_in_interval(self, query: int, msgs: list[AISMessage]) -> bool:
         """
-        Calculate the Longitude (x-coord) of `f` that lies
-        `dist` apart from the `reference` point 
-        along the functions' curve
+        Check if the query timestamp is within the
+        given interval.
         """
-        def pl_nwtn(k):
-            if flip_limits:
-                lower, upper = reference.x, k
-            else: lower, upper = k, reference.x
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                _i = scipy.integrate.quad(f,lower,upper,**Q_SETTINGS)[0]
-            return _i - dist
-
-        return scipy.optimize.newton(pl_nwtn,x0=reference.x)
-
-    @staticmethod
-    def _lat_along_path(f: Callable[[Longitude],float], 
-        reference: Point, dist: float, flip_limits: bool)-> Latitude:
-        """
-        Calculate the Latitude (y-coord) of `f` that lies
-        `dist` apart from the `reference` point 
-        along the functions' curve
-        """
-        def pl_nwtn(k):
-            if flip_limits:
-                lower, upper = k, reference.y
-            else: lower, upper = reference.y, k
-            _i = scipy.integrate.quad(f,lower,upper,**Q_SETTINGS)[0]
-            return _i - dist
-
-        return scipy.optimize.newton(pl_nwtn,x0=reference.y)
-
-    def spline(
-        self,p1: Point,p2: 
-        Point,k1: float,k2: float
-        ) -> Tuple[Callable[[Union[Latitude,Longitude]],Union[Latitude,Longitude]],
-        Callable[[Union[Latitude,Longitude]],Union[Latitude,Longitude]],
-        Callable[[Union[Latitude,Longitude]],float],
-        bool]:
-        """
-        Decide whether to use the spline along the
-        x (lon) axis or y (lat) axis
-        """
-        s,sp,pl_int,pathlen = self._spline(p1,p2,k1,k2)
-        s2,s2p,pl_int2,pathlen2 = self._spline_swapped(p1,p2,k1,k2)
-        
-        if pathlen < pathlen2:
-            _swapped = False
-            return s,sp,pl_int,pathlen, _swapped
-        else:
-            _swapped = True
-            return s2,s2p,pl_int2,pathlen2, _swapped
-    
-    def _v(self,s,obs,m1:AISMessage,m2:AISMessage, _swapped: bool): 
-
-        f, ax = plt.subplots(1,1)
-
-        p1, p2 = Point(m1.lon,m1.lat), Point(m2.lon,m2.lat)
-        ax.scatter([p1.x,p2.x],[p1.y,p2.y],c="#3a5a40",s=72)
-        ax.annotate(
-            f"Message at {m1.timestamp!s}\nLAT:{m1.lat}°N\nLON:{m1.lon}°E"
-            f"\nSOG: {m1.SOG} kn\nCOG: {m1.COG}°",
-            textcoords='figure fraction',
-            xy=(p1.x,p1.y),xytext=(0.2,0.2),
-            arrowprops=dict(facecolor="#6c757d", shrink=0.02,ec="none")
-        )
-        ax.annotate(
-            f"Message at {m2.timestamp!s}\nLAT: {m2.lat}°N\nLON: {m2.lon}°E"
-            f"\nSOG: {m2.SOG} kn\nCOG: {m2.COG}°",
-            textcoords='figure fraction',
-            xy=(p2.x,p2.y),xytext=(0.7,0.7),
-            arrowprops=dict(facecolor="#6c757d", shrink=0.02,ec="none")
-        )
-        if not _swapped:
-            v = np.linspace(p1.x-0.001*p1.x,p2.x+0.001*p1.x,3000)
-            vals = [s(x) for x in v]
-            ax.plot(v,vals,c="#1d3557",linewidth=2)
-        else:
-            v = np.linspace(p1.y-0.001*p1.y,p2.y+0.001*p1.y,3000)
-            vals = [s(y) for y in v]
-            ax.plot(vals,v,c="#1d3557",linewidth=2)
-
-        ax.scatter(obs[1],obs[0], c="#e63946", s=72)
-        ax.annotate(
-            f"Interpolated position at {self.ts!s}"
-            f"\nLAT: {obs[0]:.2f}°N\nLON: {obs[1]:.2f}°E\nSOG: "
-            f"{obs[3]:.2f} kn\nCOG: {obs[2]:.2f}°",
-            xy=(obs[1],obs[0]),
-            xytext=(0.5,0.2),
-            textcoords='figure fraction',
-            arrowprops=dict(facecolor="#6c757d", shrink=0.02,ec="none")
-        )
-        ax.plot(
-            (obs[1],obs[1]+np.sin(_dtr(obs[2]))*0.005),
-            (obs[0],obs[0]+np.cos(_dtr(obs[2]))*0.005),
-            c="#e63946")
-        ax.plot(
-            (p1.x,p1.x+np.sin(_dtr(m1.COG))*0.005),
-            (p1.y,p1.y+np.cos(_dtr(m1.COG))*0.005),
-            c="#e63946")
-        ax.plot(
-            (p2.x,p2.x+np.sin(_dtr(m2.COG))*0.005),
-            (p2.y,p2.y+np.cos(_dtr(m2.COG))*0.005),
-            c="#e63946")
-        plt.title("Vessel position estimation from AIS Messages")
-        ax.set_xlabel("Longitude [°]")
-        ax.set_ylabel("Latitude [°]")
-        plt.show()
+        return (query >= msgs[0].timestamp) and (query <= msgs[-1].timestamp)
 
 
-    def _fill_rot(self) -> None:
+    def fill_rot(self) -> None:
         """
         Fill out missing rotation data and first 
         derivative of roatation by inferring it from 
         the previous and next AIS messages' headings.
         """
-        for idx, msg in enumerate(self.track):
-            if idx == 0 or idx == len(self.track)-1:
+        for idx, msg in enumerate(self.tracks):
+            if idx == 0:
+                self.tracks[idx].ROT = 0.0
                 continue
             # Fill out missing ROT data
             if msg.ROT is None:
-                num = self.track[idx].COG - self.track[idx-1].COG 
-                den = (self.track[idx].timestamp - self.track[idx-1].timestamp).seconds()*60
-                self.track[idx].ROT = num/den
+                num = self.tracks[idx].COG - self.tracks[idx-1].COG 
+                den = (self.tracks[idx].timestamp - self.tracks[idx-1].timestamp).seconds/60
+                if den == 0:
+                    self.tracks[idx].ROT = 0.0
+                else:
+                    self.tracks[idx].ROT = num/den
 
+        for idx, msg in enumerate(self.tracks):
+            if idx == 0 or idx == len(self.tracks)-1:
+                self.tracks[idx].dROT = 0.0
+                continue
             # Calculate first derivative of ROT
-            num = self.track[idx+1].ROT - self.track[idx].ROT
-            den = (self.track[idx+1].timestamp - self.track[idx].timestamp).seconds()*60
-            self.track[idx].dROT = num/den
+            num = self.tracks[idx+1].ROT - self.tracks[idx].ROT
+            den = (self.tracks[idx+1].timestamp - self.tracks[idx].timestamp).seconds/60 # Minutes
+            if den == 0:
+                self.tracks[idx].dROT = 0.0
+            else:
+                self.tracks[idx].dROT = num/den
+
+
+    def overwrite_rot(self) -> None:
+        """
+        Overwrite the ROT and dROT values with
+        the values from COG.
+
+        Note that the timestamps are already in
+        unix timestamps, so we need to divide by 60
+        to get the minutes.
+        """
+        for idx, msg in enumerate(self.tracks):
+            if idx == 0:
+                continue
+
+            num = self.tracks[idx].COG - self.tracks[idx-1].COG 
+            den = (self.tracks[idx].timestamp - self.tracks[idx-1].timestamp)/60 # Minutes
+            if den == 0:
+                msg.ROT = 0.0
+            else:
+                msg.ROT = num/den
+
+        for idx, msg in enumerate(self.tracks):
+            if idx == 0 or idx == len(self.tracks)-1:
+                continue
+            # Calculate first derivative of ROT
+            num = self.tracks[idx+1].ROT - self.tracks[idx].ROT
+            den = (self.tracks[idx+1].timestamp - self.tracks[idx].timestamp)/60
+            if den == 0:
+                msg.dROT = 0.0
+            else:
+                msg.dROT = num/den
+
+        self.interpolate()
+
     
-    def _find_shell(self) -> Tuple[AISMessage,AISMessage]:
+    def find_shell(self) -> None:
         """
         Find the two AIS messages encompassing
-        the objects' timestamp `self.ts`. I call this the 
-        timestamp shell. The messages returned from this
-        function will be referred to as `shell points`
-        """
-        # The messages are expected to be already sorted
-        # by time in ascending order. 
-        # We also do not need to check for out-of-range
-        # errors, as only messages with at least two track
-        # elements are saved.
-        for idx, message in enumerate(self.track):
-            if message.timestamp > self.ts:
-                return self.track[idx-1], self.track[idx]
-            
-        msg = (
-            f"No outer shell for vessel `{self.mmsi}` "
-            f"could be found at timestamp `{self.ts!s}`"
-        )
-        raise ShellError(msg)
-    
-    @staticmethod
-    def _spline(
-        p1: Point, p2: Point, k1:float, k2:float
-        ) -> Tuple[
-            Callable[[float],float],
-            Callable[[float],float],
-            Callable[[float],float],
-            float]:
-        
-        # We need to add 90° to the current course of the vessel
-        # as in our local coordinate system a course of 0° would
-        # correspond to an infinite slope while a course of 90°
-        # corresponds to zero slope. However, we infer the slope
-        # via the tangent of the reported course, we must shift it 
-        # by pi/2 to meet our requirements.
-
-        # Since this alteration is only needed for the parameter 
-        # estimation, we undo the change by substracting pi/2 
-        # from the derivative (s_prime) at the end.
-        k1, k2 = _dtr2((k1-90)%180), _dtr2((k2-90)%180)
-        X = np.array(
-            [
-                [p1.x**3,p1.x**2,p1.x,1],
-                [p2.x**3,p2.x**2,p2.x,1],
-                [3*p1.x**2,2*p1.x,1.,0.],
-                [3*p2.x**2,2*p2.x,1.,0.]
-            ]
-        )
-        y = np.array(
-            [
-                [p1.y,p2.y,np.tan(k1),np.tan(k2)]
-            ]
-        )
-        #sol = scipy.linalg.solve(X,y.T)
-        X = csc_matrix(X)
-        X_inv = spilu(X)
-        sol = X_inv.solve(y.T)
-        
-        a3,a2,a1,a0 = sol.flatten().tolist()
-
-        def s(x: float) -> float:
-            return a3*x**3+a2*x**2+a1*x+a0
-        
-        def s_prime(x: float) -> float:
-            return 3*a3*x**2+2*a2*x+a1
-        
-        # Calculate the length of the spline 
-        # between its two shell points via the 
-        # path lenght integral
-        pl_int = lambda x: np.sqrt(1+s_prime(x)**2)
-        if p1.is_on_left_of(p2):
-            lower,upper = p1.x, p2.x
-        else:
-            lower,upper = p2.x, p1.x
-        pathlen = scipy.integrate.quad(pl_int,lower,upper)[0]
-        
-        return s, s_prime, pl_int, pathlen
-    
-    @staticmethod
-    def _spline_swapped(
-        p1: Point, p2: Point, k1:float, k2:float
-        ) -> Tuple[
-            Callable[[float],float],
-            Callable[[float],float],
-            Callable[[float],float],
-            float]:
-        
-        """
-        Same spline as above with the axes flipped
-        """
-        k1, k2 = _dtr2(k1%180), _dtr2(k2%180)
-        Y = np.array(
-            [
-                [p1.y**3,p1.y**2,p1.y,1],
-                [p2.y**3,p2.y**2,p2.y,1],
-                [3*p1.y**2,2*p1.y,1.,0.],
-                [3*p2.y**2,2*p2.y,1.,0.]
-            ]
-        )
-        x = np.array(
-            [
-                [p1.x,p2.x,np.tan(k1),np.tan(k2)]
-            ]
-        )
-        #sol = scipy.linalg.solve(Y,x.T) 
-        Y = csc_matrix(Y)  
-        Y_inv = spilu(Y)
-        sol = Y_inv.solve(x.T)
-        
-        a3,a2,a1,a0 = sol.flatten().tolist()
-
-        def s(y: float)->float:
-            return a3*y**3+a2*y**2+a1*y+a0
-        
-        def s_prime(y: float)->float:
-            return 3*a3*y**2+2*a2*y+a1
-        
-        # Calculate the length of the spline 
-        # between its two shell points via the 
-        # path lenght integral
-        pl_int = lambda y: np.sqrt(1+s_prime(y)**2)
-        if not p1.is_above_of(p2):
-            lower,upper = p1.y, p2.y
-        else:
-            lower,upper = p2.y, p1.y
-        pathlen = scipy.integrate.quad(pl_int,lower,upper)[0]
-        
-        return s, s_prime, pl_int, pathlen
-    
-class SearchAgent:
-    """
-    Class searching for target ships
-    near a user-provided location.
-
-    To initialize the Agent, you have to specify a 
-    datapath, where source AIS Messages are saved as csv files.
-    You also have to specify a global frame 
-    for the search agent. Outside its borders, no
-    search will be commenced.
-    """
-    
-    def __init__(
-        self, 
-        datapath: Union[str, List[str]],
-        frame: BoundingBox,
-        search_radius: float = 0.5, # in nautical miles
-        max_tgt_ships: int = 50,
-        n_cells: int = 144,
-        filter: Callable[[pd.DataFrame],pd.DataFrame] = lambda x: x,
-        v = False) -> None:
-       
+        the objects' track elements and save them
+        as attributes.
         """ 
-        frame: BoundingBox object setting the search space
-                for the taget ship extraction process.
-                AIS records outside this BoundingBox are 
-                not eligible for TargetShip construction.
-        datapath: path to (a) csv file(s) containing AIS messages.
-                Can be either a single file, or a list of several files.
-        search_radius: Radius around agent in which taget vessel 
-                search is rolled out
-        n_cells: number of cells into which the spatial extent
-                of the AIS messages is divided into.
-                (See also the `get_cell` function for more info)  
-        max_tgt_ships: maximum number of target ships to store
+        self.lower, self.upper = [], []
+        for track in self.tracks:
+            self.lower.append(track[0])
+            self.upper.append(track[-1])
 
-        filter: function to filter out unwanted AIS messages. Default is
-                the identity function.
+    def ts_to_unix(self) -> None:
         """
-        self.v = v
+        Convert the vessel's timestamp for 
+        each track element to unix time.
+        """
+        for track in self.tracks:
+            for msg in track:
+                msg.timestamp = msg.timestamp.timestamp()
 
-        if not isinstance(datapath,list):
-            self.datapath = [datapath]
-        else:
-            self.datapath = datapath
-        
-        # Spatial bounding box of current AIS message space
-        self.FRAME = frame
+class TrajectoryMatcher:
+    """
+    Class for matching trajectories of two vessels.
 
-        # Maximum number of target ships to extract
-        self.max_tgt_ships = max_tgt_ships
-        
-        # Maximum temporal deviation of target
-        # ships from provided time in `init()`
-        self.time_delta = 10
-        
-        # Search radius in [°] around agent
-        self.search_radius = search_radius
-        
-        # Number of cells, into which the spatial extent
-        # of AIS records is divided into
-        self.n_cells = n_cells
-        
-        # Init cell manager
-        if isinstance(frame,UTMBoundingBox):
-            self._utm = True
-            self.cell_manager = UTMCellManager(frame,n_cells)
-            logger.info("UTM Cell Manager initialized")
-        else:
-            self._utm = False
-            self.cell_manager = LatLonCellManager(frame,n_cells)
-            logger.info("LatLon Cell Manager initialized")
+    The trajectories are matched if they overlap
+    for a given threshold.
 
-        # List of cell-indicies of all 
-        # currently buffered cells
-        self._buffered_cell_idx = []
+    The trajectories are disjoint if they do not
+    overlap at all.
+    """
 
-        # Custom filter function for AIS messages
-        self.filter = filter
-        
-        self._is_initialized = False
-
-    def init(
+    def __init__(
             self, 
-            tpos: TimePosition, *, 
-            supress_warnings=False)-> None:
-        """
-        tpos: TimePosition object for which 
-                TargetShips shall be extracted from 
-                AIS records.
-        """
-        tpos._is_utm = self._utm
-        pos = tpos.position
-        if not self._is_initialized:
-            # Current Cell based on init-position
-            self.cell = self.cell_manager.get_cell_by_position(pos)
-            
-            # Load AIS Messages for specific cell
-            self.cell_data = self._load_cell_data(self.cell)
-            self._is_initialized = True
-            pos = f"{pos.lat:.3f}N, {pos.lon:.3f}E" if isinstance(tpos.position,Position)\
-                  else f"{pos.easting:.3f}mE, {pos.northing:.3f}mN"
-            logger.info(
-                "Target Ship search agent initialized at "
-                f"{pos}"
-            )
+            vessel1: TargetVessel, 
+            vessel2: TargetVessel,
+            threshold: float = 20 # [min] Minimun overlap between trajectories
+            ) -> None:
+        self.vessel1 = vessel1
+        self.vessel2 = vessel2
+
+        self.vessel1.find_shell()
+        self.vessel2.find_shell()
+
+        if self._disjoint():
+            self.disjoint_trajectories = True
+            self.overlapping_trajectories = False
         else:
-            if not supress_warnings:
-                logger.warn(
-                    "TargetShip object is aleady initialized. Re-initializing "
-                    "is slow as it reloads cell data. "
-                )
-                while True:
-                    dec = input("Re-initialize anyways? [y/n]: ")
-                    if not dec in ["y","n"]:
-                        print("Please answer with [y] or [n]")
-                    elif dec == "n": pass
-                    else: break
-                self._is_initialized = False
-                self.init(pos)
-            else:                
-                self._is_initialized = False
-                self.init(pos)
+            self.disjoint_trajectories = False
+            self._start()
+            self._end()
+            if self._overlapping(threshold):
+                self.overlapping_trajectories = True
+            else:
+                self.overlapping_trajectories = False
 
+    def _overlapping(self, threshold: int) -> bool:
+        """
+        Check if the trajectories overlap for a given threshold
+        """
+        return (self.end - self.start) > threshold * 60
+    
+    def _start(self) -> None:
+        """
+        Find the starting point included in both trajectories
+        """
+        if self.vessel1.lower.timestamp < self.vessel2.lower.timestamp:
+            self.start = self.vessel2.lower.timestamp
+        else:
+            self.start = self.vessel1.lower.timestamp
 
-    def get_ships(self, tpos: TimePosition) -> List[TargetVessel]:
+    def _end(self) -> None:
         """
-        Returns a list of target ships
-        present in the neighborhood of the given position. 
-        
-        tpos: TimePosition object of agent for which 
-                neighbors shall be found
+        Find the end point included in both trajectories
         """
-        # Check if cells need buffering
-        self._buffer(tpos.position)
-        neigbors = self._get_neighbors(tpos)
-        return self._construct_target_vessels(neigbors, tpos)
-
-    def _load_cell_data(self, cell: Cell) -> pd.DataFrame:
+        if self.vessel1.upper.timestamp > self.vessel2.upper.timestamp:
+            self.end = self.vessel2.upper.timestamp
+        else:
+            self.end = self.vessel1.upper.timestamp
+    
+    def _disjoint(self) -> bool:
         """
-        Load AIS Messages from a given path or list of paths
-        and return only messages that fall inside given `cell`-bounds.
+        Check if the trajectories are disjoint on the time axis
         """
-        snippets = []
-
-        # Spatial filter for cell. Since the data is
-        # provided in the lat/lon format, we have to
-        # convert the cell to lat/lon as well.
-        if isinstance(cell,UTMCell):
-            cell = cell.to_latlon()
-        spatial_filter = (
-            f"{DataColumns.LON} > {cell.LONMIN} and "
-            f"{DataColumns.LON} < {cell.LONMAX} and "
-            f"{DataColumns.LAT} > {cell.LATMIN} and "
-            f"{DataColumns.LAT} < {cell.LATMAX}"
+        return (
+            (self.vessel1.upper.timestamp < self.vessel2.lower.timestamp) or
+            (self.vessel2.upper.timestamp < self.vessel1.lower.timestamp) or 
+            (self.vessel1.lower.timestamp > self.vessel2.upper.timestamp) or
+            (self.vessel2.lower.timestamp > self.vessel1.upper.timestamp)
         )
+
+    def observe_interval(self,interval: int) -> TrajectoryMatcher:
+        """
+        Retruns the trajectories of both vessels
+        between the start and end points, with the
+        given interval in [seconds].
+        """
+        if self.disjoint_trajectories:
+            raise ValueError(
+                "Trajectories are disjoint on the time scale."
+            )
+        
+        obs_vessel1 = self.vessel1.observe_interval(
+            self.start, self.end, interval
+        )
+        obs_vessel2 = self.vessel2.observe_interval(
+            self.start, self.end, interval
+        )
+
+        self.obs_vessel1 = obs_vessel1
+        self.obs_vessel2 = obs_vessel2
+        
+        return self
+
+    def plot(self, every: int = 10, path: str = None) -> None:
+        """
+        Plot the trajectories of both vessels
+        between the start and end points.
+        """
+        
+        n = every
+        v1color = "#d90429"
+        v2color = "#2b2d42"
+
+        # Check if obs_vessel1 and obs_vessel2 are defined
         try:
-            with Loader(cell):
-                for file in self.datapath:
-                    df = pd.read_csv(file,sep=",")
-                    df = self.filter(df) # Apply custom filter
-                    df[DataColumns.TIMESTAMP] = pd.to_datetime(
-                        df[DataColumns.TIMESTAMP]).dt.tz_localize(None)
-                    snippets.append(df.query(spatial_filter))
-        except Exception as e:
-            logger.error(f"Error while loading cell data: {e}")
-            raise FileLoadingError(e)
-
-        return pd.concat(snippets)
-
-    def _cells_for_buffering(self,pos: Position) -> List[LatLonCell]:
-
-        # Find adjacent cells
-        adjacents = self.cell_manager.adjacents(self.cell)
-        # Determine current subcell
-        subcell = self.cell_manager.get_subcell(pos,self.cell)
-        if subcell is NOTDETERMINED:
-            return NOTDETERMINED
-
-        # Find which adjacent cells to pre-buffer
-        # from the static "SUB_TO_ADJ" mapping
-        selection = SUB_TO_ADJ[subcell]
-
-        to_buffer = []
-        for direction in selection:
-            adj = getattr(adjacents,direction)
-            if adj is OUTOFBOUNDS:
-                continue
-            to_buffer.append(adj)
-        
-        return to_buffer
-
-    def _buffer(self, pos: Position) -> None:
-
-        # Get cells that need to be pre-buffered
-        cells = self._cells_for_buffering(pos)
-        # Cancel buffering if vessel is either 
-        # in the exact center of the cell or 
-        # there are no adjacent cells to buffer.
-        if cells is NOTDETERMINED or not cells:
-            return
-
-        def buffer():
-            self.cell_data = pd.concat(
-                self._load_cell_data(cell) for cell in cells
+            obs_vessel1 = self.obs_vessel1
+            obs_vessel2 = self.obs_vessel2
+        except AttributeError:
+            raise AttributeError(
+                "Nothing to plot. "
+                "Please run observe_interval() before plotting."
             )
-            return
 
-        # Start buffering thread if currently buffered
-        # cells are not the same which need buffering
-        eligible_for_buffering = [c.index for c in cells]
-        if not eligible_for_buffering == self._buffered_cell_idx:
-            self._buffered_cell_idx = eligible_for_buffering
-            Thread(target=buffer,daemon=True).start()
-        return
+        # Plot trajectories and metrics
+        fig = plt.figure(layout="constrained",figsize=(16,10))
+        gs = GridSpec(4, 2, figure=fig)
+        
+        ax1 = fig.add_subplot(gs[0:2, 0])
+        ax2 = fig.add_subplot(gs[0, 1])
+        ax3 = fig.add_subplot(gs[1, 1])
+        ax4 = fig.add_subplot(gs[2, 0])
+        ax5 = fig.add_subplot(gs[3, 0])
+        ax6 = fig.add_subplot(gs[2, 1])
+        ax7 = fig.add_subplot(gs[3, 1])
+
+        # Custom xticks for time
+        time_tick_locs = obs_vessel1[:,6][::10]
+        # Make list of HH:MM for each unix timestamp
+        time_tick_labels = [datetime.fromtimestamp(t).strftime('%H:%M') for t in time_tick_locs]
+
+        # Plot trajectories in easting-northing space
+        v1p = ax1.plot(obs_vessel1[:,1], obs_vessel1[:,0],color = v1color)[0]
+        v2p = ax1.plot(obs_vessel2[:,1], obs_vessel2[:,0],color=v2color)[0]
+
+        for x,y,n in zip(obs_vessel1[:,1][::n], 
+                         obs_vessel1[:,0][::n],
+                         np.arange(len(obs_vessel1[:,0][::n]))):
+            ax1.text(x,y,n,fontsize=8,color=v1color)
+        
+        for x,y,n in zip(obs_vessel2[:,1][::n],
+                        obs_vessel2[:,0][::n],
+                        np.arange(len(obs_vessel2[:,0][::n]))):
+             ax1.text(x,y,n,fontsize=8,color=v2color)
             
-    def _build_kd_tree(self, data: pd.DataFrame) -> cKDTree:
-        """
-        Build a kd-tree object from the `Lat` and `Lon` 
-        columns of a pandas dataframe.
+        
+        v1s = ax1.scatter(obs_vessel1[:,1][::n], obs_vessel1[:,0][::n],color = v1color)
+        v2s = ax1.scatter(obs_vessel2[:,1][::n], obs_vessel2[:,0][::n],color=v2color)
+        ax1.set_title("Trajectories")
+        ax1.set_xlabel("Easting [m]")
+        ax1.set_ylabel("Northing [m]")
+        ax1.legend(
+            [(v1p,v1s),(v2p,v2s)],
+            [f"Vessel {self.vessel1.mmsi}", f"Vessel {self.vessel2.mmsi}"],
+            fontsize=8
+        )
 
-        If the object was initialized with a UTMCellManager,
-        the data is converted to UTM before building the tree.
-        """
-        assert DataColumns.LAT in data and DataColumns.LON in data, \
-            "Input dataframe has no `lat` or `lon` columns"
-        if isinstance(self.cell_manager,UTMCellManager):
-            eastings, northings, *_ = utm.from_latlon(
-                data[DataColumns.LAT].values,
-                data[DataColumns.LON].values
-                )
-            return cKDTree(np.column_stack((northings,eastings)))
+        # Plot easting in time-space
+        v1ep = ax2.plot(obs_vessel1[:,6],obs_vessel1[:,1],color = v1color)[0]
+        v1es = ax2.scatter(obs_vessel1[:,6][::n],obs_vessel1[:,1][::n],color=v1color)
+        v2ep = ax2.plot(obs_vessel2[:,6],obs_vessel2[:,1],color = v2color)[0]
+        v2es = ax2.scatter(obs_vessel2[:,6][::n],obs_vessel2[:,1][::n],color=v2color)
+
+        # Original trajectories for both vessels
+        v1esp = ax2.scatter(
+            [m.timestamp for m in self.vessel1.tracks],
+            [m.easting for m in self.vessel1.tracks],color = v1color,marker="x"
+        )
+        v2esp = ax2.scatter(
+            [m.timestamp for m in self.vessel2.tracks],
+            [m.easting for m in self.vessel2.tracks],color=v2color,marker="x"
+        )
+        ax2.set_xticks(time_tick_locs)
+        ax2.set_xticklabels(time_tick_labels, rotation=45)
+        
+        ax2.set_title("Easting")
+        ax2.set_xlabel("Time")
+        ax2.set_ylabel("Easting [m]")
+        ax2.legend(
+            [(v1ep,v1es),(v2ep,v2es),(v1esp),(v2esp)],
+            [
+                f"Vessel {self.vessel1.mmsi}", 
+                f"Vessel {self.vessel2.mmsi}",
+                f"Vessel {self.vessel1.mmsi} raw data", 
+                f"Vessel {self.vessel2.mmsi} raw data"
+            ],
+            fontsize=8
+        )
+
+        # Plot northing in time-space
+        v1np = ax3.plot(obs_vessel1[:,6],obs_vessel1[:,0],color=v1color)[0]
+        v1ns = ax3.scatter(obs_vessel1[:,6][::n],obs_vessel1[:,0][::n],color=v1color)
+        v2np = ax3.plot(obs_vessel2[:,6],obs_vessel2[:,0],color=v2color)[0]
+        v2ns = ax3.scatter(obs_vessel2[:,6][::n],obs_vessel2[:,0][::n],color=v2color)
+
+        # Original trajectories for both vessels
+        v1nsp = ax3.scatter(
+            [m.timestamp for m in self.vessel1.tracks],
+            [m.northing for m in self.vessel1.tracks],color=v1color,marker="x"
+        )
+        v2nsp = ax3.scatter(
+            [m.timestamp for m in self.vessel2.tracks],
+            [m.northing for m in self.vessel2.tracks],color=v2color,marker="x"
+        )
+        ax3.set_xticks(time_tick_locs)
+        ax3.set_xticklabels(time_tick_labels, rotation=45)
+        
+        ax3.set_title("Northing")
+        ax3.set_xlabel("Time")
+        ax3.set_ylabel("Nothing [m]")
+        ax3.legend(
+            [(v1np,v1ns),(v2np,v2ns),(v1nsp),(v2nsp)],
+            [
+                f"Vessel {self.vessel1.mmsi}", 
+                f"Vessel {self.vessel2.mmsi}",
+                f"Vessel {self.vessel1.mmsi} raw data",
+                f"Vessel {self.vessel2.mmsi} raw data"
+            ],
+            fontsize=8
+        )
+        
+        # Plot COG in time-space
+        v1cp = ax4.plot(obs_vessel1[:,6],obs_vessel1[:,2],color=v1color)[0]
+        v1cs = ax4.scatter(obs_vessel1[:,6][::n],obs_vessel1[:,2][::n],color=v1color)
+        v2cp = ax4.plot(obs_vessel2[:,6],obs_vessel2[:,2],color=v2color)[0]
+        v2cs = ax4.scatter(obs_vessel2[:,6][::n],obs_vessel2[:,2][::n],color=v2color)
+
+        # Original trajectories for both vessels
+        v1csp = ax4.scatter(
+            [m.timestamp for m in self.vessel1.tracks],
+            [m.COG for m in self.vessel1.tracks],color=v1color,marker="x"
+        )
+        v2csp = ax4.scatter(
+            [m.timestamp for m in self.vessel2.tracks],
+            [m.COG for m in self.vessel2.tracks],color=v2color,marker="x"
+        )
+        ax4.set_xticks(time_tick_locs)
+        ax4.set_xticklabels(time_tick_labels, rotation=45)
+
+        ax4.set_title("Course over Ground")
+        ax4.set_xlabel("Time")
+        ax4.set_ylabel("Course over Ground [deg]")
+        ax4.legend(
+            [(v1cp,v1cs),(v2cp,v2cs),(v1csp),(v2csp)],
+            [
+                f"Vessel {self.vessel1.mmsi}", 
+                f"Vessel {self.vessel2.mmsi}",
+                f"Vessel {self.vessel1.mmsi} raw data",
+                f"Vessel {self.vessel2.mmsi} raw data"
+            ],
+            fontsize=8
+        )
+        
+        # Plot SOG in time-space
+        v1sp = ax5.plot(obs_vessel1[:,6],obs_vessel1[:,3],color=v1color)[0]
+        v1ss = ax5.scatter(obs_vessel1[:,6][::n],obs_vessel1[:,3][::n],color=v1color)
+        v2sp = ax5.plot(obs_vessel2[:,6],obs_vessel2[:,3],color=v2color)[0]
+        v2ss = ax5.scatter(obs_vessel2[:,6][::n],obs_vessel2[:,3][::n],color=v2color)
+
+        # Original trajectories for both vessels
+        v1ssp = ax5.scatter(
+            [m.timestamp for m in self.vessel1.tracks],
+            [m.SOG for m in self.vessel1.tracks],color=v1color,marker="x"
+        )
+        v2ssp = ax5.scatter(
+            [m.timestamp for m in self.vessel2.tracks],
+            [m.SOG for m in self.vessel2.tracks],color=v2color,marker="x"
+        )
+        ax5.set_xticks(time_tick_locs)
+        ax5.set_xticklabels(time_tick_labels, rotation=45)
+
+        ax5.set_title("Speed over Ground")
+        ax5.set_xlabel("Time")
+        ax5.set_ylabel("Speed over Ground [knots]")
+        ax5.legend(
+            [(v1sp,v1ss),(v2sp,v2ss),(v1ssp),(v2ssp)],
+            [
+                f"Vessel {self.vessel1.mmsi}", 
+                f"Vessel {self.vessel2.mmsi}",
+                f"Vessel {self.vessel1.mmsi} raw data",
+                f"Vessel {self.vessel2.mmsi} raw data"
+            ],
+            fontsize=8
+        )
+
+        # Plot ROT in time-space
+        v1rp = ax6.plot(obs_vessel1[:,6],obs_vessel1[:,4],color=v1color)[0]
+        v1rs = ax6.scatter(obs_vessel1[:,6][::n],obs_vessel1[:,4][::n],color=v1color)
+        v2rp = ax6.plot(obs_vessel2[:,6],obs_vessel2[:,4],color=v2color)[0]
+        v2rs = ax6.scatter(obs_vessel2[:,6][::n],obs_vessel2[:,4][::n],color=v2color)
+
+        # Original trajectories for both vessels
+        v1rsp = ax6.scatter(
+            [m.timestamp for m in self.vessel1.tracks],
+            [m.ROT for m in self.vessel1.tracks],color=v1color,marker="x"
+        )
+        v2rsp = ax6.scatter(
+            [m.timestamp for m in self.vessel2.tracks],
+            [m.ROT for m in self.vessel2.tracks],color=v2color,marker="x"
+        )
+        ax6.set_xticks(time_tick_locs)
+        ax6.set_xticklabels(time_tick_labels, rotation=45)
+
+        ax6.set_title("Rate of Turn")
+        ax6.set_xlabel("Time")
+        ax6.set_ylabel("Rate of Turn [deg/min]")
+        ax6.legend(
+            [(v1rp,v1rs),(v2rp,v2rs),(v1rsp),(v2rsp)],
+            [
+                f"Vessel {self.vessel1.mmsi}", 
+                f"Vessel {self.vessel2.mmsi}",
+                f"Vessel {self.vessel1.mmsi} raw data",
+                f"Vessel {self.vessel2.mmsi} raw data"
+            ],
+            fontsize=8
+        )
+
+        # Plot dROT in time-space
+        v1drp = ax7.plot(obs_vessel1[:,6],obs_vessel1[:,5],color=v1color)[0]
+        v1drs = ax7.scatter(obs_vessel1[:,6][::n],obs_vessel1[:,5][::n],color=v1color)
+        v2drp = ax7.plot(obs_vessel2[:,6],obs_vessel2[:,5],color=v2color)[0]
+        v2drs = ax7.scatter(obs_vessel2[:,6][::n],obs_vessel2[:,5][::n],color=v2color)
+
+        # Original trajectories for both vessels
+        v1drsp = ax7.scatter(
+            [m.timestamp for m in self.vessel1.tracks],
+            [m.dROT for m in self.vessel1.tracks],color=v1color,marker="x"
+        )
+        v2drsp = ax7.scatter(
+            [m.timestamp for m in self.vessel2.tracks],
+            [m.dROT for m in self.vessel2.tracks],color=v2color,marker="x"
+        )
+        ax7.set_xticks(time_tick_locs)
+        ax7.set_xticklabels(time_tick_labels, rotation=45)
+
+        ax7.set_title("Derivative of Rate of Turn")
+        ax7.set_xlabel("Time")
+        ax7.set_ylabel("Rate of Turn [$deg/min^2$]")
+        ax7.legend(
+            [(v1drp,v1drs),(v2drp,v2drs),(v1drsp),(v2drsp)],
+            [
+                f"Vessel {self.vessel1.mmsi}", 
+                f"Vessel {self.vessel2.mmsi}",
+                f"Vessel {self.vessel1.mmsi} raw data",
+                f"Vessel {self.vessel2.mmsi} raw data"
+            ],
+            fontsize=8
+        )
+        
+        plt.suptitle("Trajectories")
+        plt.tight_layout()
+
+        if path is None:
+            # Make directory if it does not exist
+            if not os.path.exists("~/aisout/plots"):
+                os.makedirs("~/aisout/plots")
+            savepath = f"~/aisout/plots/"
         else:
-            return cKDTree(data[[DataColumns.LAT,DataColumns.LON]])
+            savepath = path
 
-    def _get_neighbors(self, tpos: TimePosition):
-        """
-        Return all AIS messages that are no more than
-        `self.search_radius` [nm] away from the given position.
+        fname = f"trajectories_{self.vessel1.mmsi}_{self.vessel2.mmsi}.png"
 
-        Args:
-            tpos: TimePosition object of postion and time for which 
-                    neighbors shall be found        
+        # Check if file exists and if so, append number to filename
+        if os.path.exists(f"{savepath}/{fname}"):
+            i = 1
+            while os.path.exists(f"{savepath}/{fname}"):
+                fname = f"trajectories_{self.vessel1.mmsi}_{self.vessel2.mmsi}_{i}.png"
+                i += 1
 
-        """
-        tpos._is_utm = self._utm
-        filtered = self._time_filter(self.cell_data,tpos.timestamp,self.time_delta)
-        # Check if filterd result is empty
-        if filtered.empty:
-            logger.warning("No AIS messages found in time-filtered cell.")
-            return filtered
-        tree = self._build_kd_tree(filtered)
-        # The conversion to degrees is only accurate at the equator.
-        # Everywhere else, the distances get smaller as lines of 
-        # Longitude are not parallel. Therefore, 
-         # this is a convervative estimate.         
-        search_radius = (nm2m(self.search_radius) if self._utm 
-                         else self.search_radius/60) # Convert to degrees
-        d, indices = tree.query(
-            list(tpos.position),
-            k=self.max_tgt_ships,
-            distance_upper_bound=search_radius
+        plt.savefig(
+            f"{savepath}/{fname}",
+            dpi=300
         )
-        # Sort out any infinite distances
-        res = [indices[i] for i,j in enumerate(d) if j != float("inf")]
-
-        return filtered.iloc[res]
-
-    def _construct_target_vessels(
-            self, df: pd.DataFrame, tpos: TimePosition) -> List[TargetVessel]:
-        """
-        Walk through the rows of `df` and construct a 
-        `TargetVessel` object for every unique MMSI. 
+        plt.close()
         
-        The individual AIS Messages are sorted by date
-        and are added to the respective TargetVessel's track attribute.
-        """
-        df = df.sort_values(by=DataColumns.TIMESTAMP)
-        targets: dict[int,TargetVessel] = {}
-        
-        for mmsi,ts,lat,lon,sog,cog,turn in zip(
-            df[DataColumns.MMSI],df[DataColumns.TIMESTAMP],
-            df[DataColumns.LAT], df[DataColumns.LON],
-            df[DataColumns.SPEED],df[DataColumns.COURSE],
-            df[DataColumns.TURN]):
-
-            msg = AISMessage(
-                sender=mmsi,
-                timestamp=ts.to_pydatetime(),
-                lat=lat,lon=lon,
-                COG=cog,SOG=sog,
-                ROT=turn,
-                _utm=self._utm
-            )
-            
-            if mmsi not in targets:
-                targets[mmsi] = TargetVessel(
-                    v = self.v,
-                    ts = tpos.timestamp,
-                    mmsi=mmsi,
-                    track=[msg]
-                )
-            else: 
-                v = targets[mmsi]
-                v.track.append(msg)
-
-        return self._post_filter(targets,tpos)
-
-    def _post_filter(self, 
-            targets: dict[int,TargetVessel], tpos: TimePosition) -> List[TargetVessel]:
-        """
-        Remove all vessels that have only a single
-        observation or whose track lies outside
-        the queried timestamp. 
-        
-        Check for too-slow vessels
-        
-        
-        
-        """
-        for mmsi, target_ship in list(targets.items()):
-            if (len(target_ship.track) < 2 or not 
-                (target_ship.track[0].timestamp < 
-                tpos.timestamp < 
-                target_ship.track[-1].timestamp) or
-                any(v.SOG < .5 for v in target_ship.track)):
-                del targets[mmsi]
-        return [ship for ship in targets.values()]
-
-    def _time_filter(self, df: pd.DataFrame, date: datetime, delta: int) -> pd.DataFrame:
-        """
-        Filter a pandas dataframe to only return 
-        rows whose `Timestamp` is not more than 
-        `delta` minutes apart from imput `date`.
-        """
-        assert DataColumns.TIMESTAMP in df, "No `timestamp` column found"
-        date = pd.Timestamp(date, tz=None)
-        dt = pd.Timedelta(delta, unit="minutes")
-        mask = (
-            (df[DataColumns.TIMESTAMP] > (date-dt)) & 
-            (df[DataColumns.TIMESTAMP] < (date+dt))
-        )
-        return df.loc[mask]
 
 
 def _dtr(angle: float) -> float:
@@ -941,11 +922,3 @@ def _dtr2(angle: float) -> float:
     heading is provided clockwise"""
     o = ((angle-180)%360)-180
     return -o/180*np.pi
-
-def m2nm(m: float) -> float:
-    """Convert meters to nautical miles"""
-    return m/1852
-
-def nm2m(nm: float) -> float:
-    """Convert nautical miles to meters"""
-    return nm*1852

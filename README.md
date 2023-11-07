@@ -45,13 +45,14 @@ search_agent = pytsa.SearchAgent(sourcefile,frame)
 ```
 
 ## Data structure
-The AIS records must be present in the `.csv` file format and need to at least contain `timestamp,lat,lon,speed,course` fields, whereby:
+The AIS records must be present in the `.csv` file format and need to at least contain `timestamp,lat,lon,speed,course,rotation` fields, whereby:
 
 - _timestamp_: ISO 8601 parseable date format (e.g. "_2021-07-03T00:00:00.000Z_")
 - _lat_: Latitude as float (51.343)
 - _lon_: Longitude as float (12.45)
 - _speed_: Speed over ground (SOG) in knots
 - _course_: Course over ground (COG) in degrees (0-360)
+- _rotation_: Rate of rotation (-127 - 127)
 
 Three lines of example data could look like this: 
 
@@ -83,11 +84,11 @@ After initialization, a search can be commenced by
 target_ships = search_agent.get_ships(tpos)
 ```
 yielding a list of `TargetShip` objects (see `pytsa/targetship.py` for more information).
-To get the current `Latitude, Longitude, SOG, COG` for each `TargetShip` object at the provided timestamp, the `observe()` method is to be called on every `TargetShip`:
+To get the current `Latitude, Longitude, SOG, COG, ROT dROT` for each `TargetShip` object at the provided timestamp, the `observe_at_query()` method is to be called on every `TargetShip`:
 
 ```py
 for ship in target_ships:
-    ship.observe()
+    ship.observe_at_query()
 
 # Example output for one ship
 >>> np.array([52.232,9.847,12.34,223.4])
@@ -131,8 +132,8 @@ target_ships = search_agent.get_ships(tpos)
 # Extract the current position, speed and
 # course for all found target vessels.
 for ship in target_ships:
-    ship.observe()
+    ship.observe_at_query()
 
 # Example output for one ship
->>> np.array([52.232,9.847,12.34,223.4])
+>>> np.array([52.232,9.847,12.34,223.4,2.5,0.3])
 ```
