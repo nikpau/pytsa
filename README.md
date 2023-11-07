@@ -9,13 +9,14 @@ $ pip install git+https://github.com/nikpau/pytsa
 ```
 
 ## Instantiation
-The search agent must be instantiated with two components: Its _BoundingBox_ and _data path_:
+The search agent must be instantiated with three components: Its _BoundingBox_, _msg12318files_ and _msg5files_:
 
 - _BoundingBox_: Reference frame containing the spatial extent of the searchable area in degrees of latitude and longitude. 
 
     - If you want your output to be of the form [northing, easting, SOG, COG] you can call the `.to_utm()` method on the bounding box.
 
-- _data path_: File path to a `.csv` file containing the AIS messages to consider for the search procedure. See the next section for details on the data structure.
+- _msg12318files_: File path to a `.csv` file containing dynamic AIS messages (Types 1,2,3 and 18 only) to consider for the search procedure. See the next section for details on the data structure.
+- _msg5files_: File path to the corresponding `.csv` file contatining static AIS messages (message type 5)
 
 Example instantiation for a small area in the North Sea:
 
@@ -39,9 +40,14 @@ frame = pytsa.LatLonBoundingBox(
     LONMAX = 9.5,  # [°E]
 ).to_utm()
 
-sourcefile = Path("data/testdata.csv")
+dynamic_data = Path("data/dynamic_test.csv")
+static_data = Path(data/static_test.csv)
 
-search_agent = pytsa.SearchAgent(sourcefile,frame)
+search_agent = pytsa.SearchAgent(
+    msg12318file = dynamic_data,
+    msg5file = static_data
+    frame = frame
+)
 ```
 
 ## Data structure
@@ -109,11 +115,16 @@ frame = pytsa.LatLonBoundingBox(
 )
 
 # File containing AIS messages
-sourcefile = Path("data/testdata.csv")
+dynamic_data = Path("data/dynamic_test.csv")
+static_data = Path(data/static_test.csv)
 
 # Instantiate the search agent with the source file 
 # and the search area
-search_agent = pytsa.SearchAgent(sourcefile,frame)
+search_agent = pytsa.SearchAgent(
+    msg12318file = dynamic_data,
+    msg5file = static_data
+    frame = frame
+)
 
 # Provide a position and time for which the search
 # will be carried out
