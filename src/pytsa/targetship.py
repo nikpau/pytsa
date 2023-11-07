@@ -18,6 +18,7 @@ from matplotlib import pyplot as plt
 from matplotlib.gridspec import GridSpec
 from scipy.interpolate import InterpolatedUnivariateSpline, interp1d
 from pytsa.structs import ShipType
+from pytsa.logger import logger
 
 # Settings for numerical integration
 Q_SETTINGS = dict(epsabs=1e-13,epsrel=1e-13,limit=500)
@@ -331,17 +332,15 @@ class TargetVessel:
 
         # Return the observed values from the splines
         # at the given timestamp
-        # Returns a 1x6 array:
-        # [northing, easting, COG, SOG, ROT, dROT]
+        # Returns a 1x4 array:
+        # [northing, easting, COG, SOG]
         return np.array([
             self.interpolation[i].northing(ts),
             self.interpolation[i].easting(ts),
             # Take the modulo 360 to ensure that the
             # course over ground is in the interval [0,360]
             self.interpolation[i].COG(ts) % 360,
-            self.interpolation[i].SOG(ts),
-            self.interpolation[i].ROT(ts),
-            self.interpolation[i].dROT(ts),
+            self.interpolation[i].SOG(ts)
         ])
 
     def observe_interval(
@@ -370,47 +369,81 @@ class TargetVessel:
             start = start.timestamp()
             end = end.timestamp()
 
-        # Check if the interval boundary is within the
+        # Check if the start timestamp is within the
         # track's timestamps
-        if start < self.lower.timestamp:
-            raise OutofTimeBoundsError(
-                "Start timestamp is before the track's first timestamp."
-            )
-        if end > self.upper.timestamp:
-            raise OutofTimeBoundsError(
-                "End timestamp is after the track's last timestamp."
-            )
-        
-        # Convert interval from seconds to milliseconds
-        #interval = interval * 1000
+        for i,track in enumerate(self.tracks):
+            if self._is_in_interval(start,track):
+                break
+            if i == len(self.tracks)-1:
+                raise OutofTimeBoundsError(
+                    "Start timestamp is not within the track's timestamps. "
+                    "MMSI: {}".format(self.mmsi)
+                )
+        # Check if the end timestamp is within the
+        # track's timestamps
+        for j,track in enumerate(self.tracks):
+            if self._is_in_interval(end,track):
+                break
+            if j == len(self.tracks)-1:
+                raise OutofTimeBoundsError(
+                    "End timestamp is not within the track's timestamps. "
+                    "MMSI: {}".format(self.mmsi)
+                )
 
         # Create a list of timestamps between the start and end
         # timestamps, with the given interval
         timestamps = np.arange(start, end, interval)
 
-        # Return the observed values from the splines
-        # at the given timestamps
-        # Returns a Nx7 array:
-        # [northing, easting, COG, SOG, ROT, dROT, timestamp]
-        preds: np.ndarray = np.array([
-            self.interpolation.northing(timestamps),
-            self.interpolation.easting(timestamps),
-            # Take the modulo 360 of the COG to get the
-            # heading to be between 0 and 360 degrees
-            self.interpolation.COG(timestamps) % 360,
-            self.interpolation.SOG(timestamps),
-            self.interpolation.ROT(timestamps),
-            self.interpolation.dROT(timestamps),
-            timestamps
-        ])
-        return preds.T
+        # Start and end points of the interval
+        # lie within the same track
+        if i == j:
+            # Return the observed values from the interpolation
+            # at the given timestamps
+            # Returns a Nx4 array:
+            # [northing, easting, COG, SOG, timestamp]
+            preds: np.ndarray = np.array([
+                self.interpolation[i].northing(timestamps),
+                self.interpolation[i].easting(timestamps),
+                # Take the modulo 360 of the COG to get the
+                # heading to be between 0 and 360 degrees
+                self.interpolation[i].COG(timestamps) % 360,
+                self.interpolation[i].SOG(timestamps),
+                timestamps
+            ])
+            return preds.T
+        # Start and end points of the interval
+        # lie in different tracks
+        else:
+            logger.warning(
+                "Start and end points of the interval lie in different tracks. "
+                "Results may be inaccurate. MMSI: %s".format(self.mmsi)
+            )
+            # Combine the tracks into one list
+            tracks = self.tracks[i:j+1]
+            tracks = [msg for track in tracks for msg in track]
+            interp_ = TrackSplines(tracks) if not self.lininterp else TrackLinear(tracks)
+            # Return the observed values from the interpolation
+            # at the given timestamps
+            # Returns a Nx4 array:
+            # [northing, easting, COG, SOG, timestamp]
+            preds: np.ndarray = np.array([
+                interp_.northing(timestamps),
+                interp_.easting(timestamps),
+                # Take the modulo 360 of the COG to get the
+                # heading to be between 0 and 360 degrees
+                interp_.COG(timestamps) % 360,
+                interp_.SOG(timestamps),
+                timestamps
+            ])
+            return preds.T
+            
     
-    def _is_in_interval(self, query: int, timestamps: list[int]) -> bool:
+    def _is_in_interval(self, query: int, msgs: list[AISMessage]) -> bool:
         """
         Check if the query timestamp is within the
         given interval.
         """
-        return (query >= timestamps[0]) and (query <= timestamps[-1])
+        return (query >= msgs[0].timestamp) and (query <= msgs[-1].timestamp)
 
 
     def fill_rot(self) -> None:
