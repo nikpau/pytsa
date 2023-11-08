@@ -41,7 +41,7 @@ frame = pytsa.LatLonBoundingBox(
 ).to_utm()
 
 dynamic_data = Path("data/dynamic_test.csv")
-static_data = Path(data/static_test.csv)
+static_data = Path("data/static_test.csv")
 
 search_agent = pytsa.SearchAgent(
     msg12318file = dynamic_data,
@@ -116,7 +116,7 @@ frame = pytsa.LatLonBoundingBox(
 
 # File containing AIS messages
 dynamic_data = Path("data/dynamic_test.csv")
-static_data = Path(data/static_test.csv)
+static_data = Path("data/static_test.csv")
 
 # Instantiate the search agent with the source file 
 # and the search area
