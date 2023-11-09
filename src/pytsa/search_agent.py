@@ -85,10 +85,7 @@ class SearchAgent:
                     of type 1,2,3 and 18.
         search_radius: Radius around agent in which taget vessel 
                 search is rolled out
-        n_cells: number of cells into which the spatial extent
-                of the AIS messages is divided into.
-                (See also the `get_cell` function for more info)  
-        max_tgt_ships: maximum number of target ships to store
+        max_tgt_ships: maximum number of target ships to retrun
 
         preproceccor: Preprocessor function for input data. 
                 Defaults to the identity.
@@ -186,7 +183,9 @@ class SearchAgent:
                   overlap_tpos: bool = True,
                   all_trajectories = False,
                   interpolation: str = "linear",
-                  return_rejected: bool = False) -> List[TargetVessel]:
+                  return_rejected: bool = False,
+                  maxtgap: int = 400,
+                  maxdgap: float = 10) -> Targets:
         """
         Returns a list of target ships
         present in the neighborhood of the given position. 
@@ -207,15 +206,15 @@ class SearchAgent:
             "Interpolation method must be either 'linear', 'spline' or 'auto'"
         # Get neighbors
         if all_trajectories:
-            tgts = self._construct_target_vessels(self.dynamic_msgs, tpos)
+            tgts = self._construct_target_vessels(self.dynamic_msgs,tpos,maxtgap,maxdgap)
         else:
             neigbors = self._get_neighbors(tpos)
-            tgts = self._construct_target_vessels(neigbors, tpos)
-
-        tgts, rejected = self._split_impl(tgts,tpos,overlap_tpos,n=2)
+            tgts = self._construct_target_vessels(neigbors, tpos,maxtgap,maxdgap)
+        if return_rejected:
+            tgts, rejected = self.split(tgts,tpos,overlap_tpos)
+            rejected = self._construct_splines(rejected,mode=interpolation)
         # Contruct Splines for all target ships
         tgts = self._construct_splines(tgts,mode=interpolation)
-        rejected = self._construct_splines(rejected,mode=interpolation)
         return tgts if not return_rejected else (tgts,rejected)
     
     def get_raw_ships(self, 
