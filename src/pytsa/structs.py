@@ -29,7 +29,16 @@ class ShipType(Enum):
     """
     Dataclass to store the type of vessel
     as defined by the AIS standard.
+    See here for more information:
+    https://coast.noaa.gov/data/marinecadastre/ais/VesselTypeCodes2018.pdf
     """
+    WIG = range(20,30) # Wing in ground
+    FISHING = 30
+    TUGTOW = range(31,33)
+    MILITARY = 35
+    SAILING = 36
+    PLEASURE = 37
+    HSC = range(40,50) # High speed craft
     PASSENGER = range(60,70)
     CARGO = range(70,80)
     TANKER = range(80,90)
@@ -176,6 +185,7 @@ class TimePosition:
 
         self.as_array: List[float] = field(default=list)
         self.timestamp = self._validate_timestamp()
+        self.timestamp = self.timestamp.timestamp()
 
         # if self.lat is None or self.lon is None:
         #     self.lat, self.lon = utm.to_latlon(
