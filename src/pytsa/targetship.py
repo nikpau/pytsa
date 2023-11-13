@@ -24,11 +24,11 @@ from pytsa.logger import logger
 Q_SETTINGS = dict(epsabs=1e-13,epsrel=1e-13,limit=500)
 
 
-
 # Type aliases
 Latitude = float
 Longitude = float
 MMSI = int
+UNIX_TIMESTAMP = float
 
 # Constants
 PI = np.pi
@@ -148,7 +148,7 @@ class AISMessage:
     AIS Message object
     """
     sender: MMSI
-    timestamp: datetime | float
+    timestamp: UNIX_TIMESTAMP
     lat: Latitude
     lon: Longitude
     COG: float # Course over ground [degrees]
@@ -247,7 +247,7 @@ class TargetVessel:
     
     def __init__(
         self,
-        ts: Union[str,datetime], 
+        ts: Union[int, None], 
         mmsi: MMSI, 
         tracks: List[List[AISMessage]],
         ship_type: ShipType = None,
@@ -273,57 +273,53 @@ class TargetVessel:
             "Mode must be either 'linear', 'spline' or 'auto'."
         self.interpolation = []
         for track in self.tracks:
-            if mode == "auto":
-                try:
-                    if self.lininterp:
-                        self.interpolation.append(TrackLinear(track))
-                    else:
-                        self.interpolation.append(TrackSplines(track))
-                except Exception as e:
-                    raise InterpolationError(
-                        f"Could not interpolate the target vessel trajectory:\n{e}."
-                    )
-            elif mode == "linear":
-                try:
+            try:
+                if mode == "auto" and self.lininterp:
                     self.interpolation.append(TrackLinear(track))
-                except Exception as e:
-                    raise InterpolationError(
-                        f"Could not interpolate the target vessel trajectory:\n{e}."
-                    )
-            elif mode == "spline":
-                try:
+                elif mode == "auto" and not self.lininterp:
+                        self.interpolation.append(TrackSplines(track))
+                elif mode == "linear":
+                    self.interpolation.append(TrackLinear(track))
+                elif mode == "spline":
                     self.interpolation.append(TrackSplines(track))
-                except Exception as e:
-                    raise InterpolationError(
-                        f"Could not interpolate the target vessel trajectory:\n{e}."
-                    )
+            except Exception as e:
+                self.tracks.remove(track)
+        if not self.interpolation: 
+            raise InterpolationError(
+                f"Could not interpolate any trajecotry "
+                f"of vessel {self.mmsi}."
+            )
 
-    def observe_at_query(self, time: datetime | str | None = None) -> np.ndarray:
+    def observe(self) -> np.ndarray:
         """
         Infers
-            - Northing (meters),
-            - Easting (meters),
+            - Latitude,
+            - Longitude,
             - Course over ground (COG) [degrees],
             - Speed over ground (SOG) [knots],
-            - Rate of turn (ROT) [degrees/minute],
-            - Change of ROT [degrees/minute²],
             
-        from univariate splines for the timestamp, 
+        from an interpolated trajectory for the timestamp, 
         the object was initialized with.
 
         """
+        if self.ts is None:
+            msg = (
+                "`observe_at()` method not available for use with `get_all_ships()`.\n"
+                "Please use `observe_interval()` or instatiante the object through `get_ships()`." 
+                )
+            logger.error(msg)
+            raise NotImplementedError(msg)
         assert self.interpolation is not None,\
             "Interpolation has not been run. Call interpolate() first."
         # Convert query timestamp to unix time
-        if time is not None:
-            ts = time.timestamp()
-        else:
+        if isinstance(self.ts, datetime):
             ts = self.ts.timestamp()
+        else: ts = self.ts
             
         # Check if the query timestamp is within the
         # track's timestamps
         for i,track in enumerate(self.tracks):
-            if self._is_in_interval(ts,[msg.timestamp for msg in track]):
+            if self._is_in_interval(ts,track):
                 break
             if i == len(self.tracks)-1:
                 raise OutofTimeBoundsError(
@@ -355,8 +351,6 @@ class TargetVessel:
             - Easting (meters),
             - Course over ground (COG) [degrees],
             - Speed over ground (SOG) [knots],
-            - Rate of turn (ROT) [degrees/minute],
-            - Change of ROT [degrees/minute²],
 
         from univariate splines for the track between
         the given start and end timestamps, with the
@@ -446,72 +440,6 @@ class TargetVessel:
         return (query >= msgs[0].timestamp) and (query <= msgs[-1].timestamp)
 
 
-    def fill_rot(self) -> None:
-        """
-        Fill out missing rotation data and first 
-        derivative of roatation by inferring it from 
-        the previous and next AIS messages' headings.
-        """
-        for idx, msg in enumerate(self.tracks):
-            if idx == 0:
-                self.tracks[idx].ROT = 0.0
-                continue
-            # Fill out missing ROT data
-            if msg.ROT is None:
-                num = self.tracks[idx].COG - self.tracks[idx-1].COG 
-                den = (self.tracks[idx].timestamp - self.tracks[idx-1].timestamp).seconds/60
-                if den == 0:
-                    self.tracks[idx].ROT = 0.0
-                else:
-                    self.tracks[idx].ROT = num/den
-
-        for idx, msg in enumerate(self.tracks):
-            if idx == 0 or idx == len(self.tracks)-1:
-                self.tracks[idx].dROT = 0.0
-                continue
-            # Calculate first derivative of ROT
-            num = self.tracks[idx+1].ROT - self.tracks[idx].ROT
-            den = (self.tracks[idx+1].timestamp - self.tracks[idx].timestamp).seconds/60 # Minutes
-            if den == 0:
-                self.tracks[idx].dROT = 0.0
-            else:
-                self.tracks[idx].dROT = num/den
-
-
-    def overwrite_rot(self) -> None:
-        """
-        Overwrite the ROT and dROT values with
-        the values from COG.
-
-        Note that the timestamps are already in
-        unix timestamps, so we need to divide by 60
-        to get the minutes.
-        """
-        for idx, msg in enumerate(self.tracks):
-            if idx == 0:
-                continue
-
-            num = self.tracks[idx].COG - self.tracks[idx-1].COG 
-            den = (self.tracks[idx].timestamp - self.tracks[idx-1].timestamp)/60 # Minutes
-            if den == 0:
-                msg.ROT = 0.0
-            else:
-                msg.ROT = num/den
-
-        for idx, msg in enumerate(self.tracks):
-            if idx == 0 or idx == len(self.tracks)-1:
-                continue
-            # Calculate first derivative of ROT
-            num = self.tracks[idx+1].ROT - self.tracks[idx].ROT
-            den = (self.tracks[idx+1].timestamp - self.tracks[idx].timestamp)/60
-            if den == 0:
-                msg.dROT = 0.0
-            else:
-                msg.dROT = num/den
-
-        self.interpolate()
-
-    
     def find_shell(self) -> None:
         """
         Find the two AIS messages encompassing
@@ -522,15 +450,6 @@ class TargetVessel:
         for track in self.tracks:
             self.lower.append(track[0])
             self.upper.append(track[-1])
-
-    def ts_to_unix(self) -> None:
-        """
-        Convert the vessel's timestamp for 
-        each track element to unix time.
-        """
-        for track in self.tracks:
-            for msg in track:
-                msg.timestamp = msg.timestamp.timestamp()
 
 class TrajectoryMatcher:
     """

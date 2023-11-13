@@ -70,7 +70,6 @@ class SearchAgent:
         msg12318file: Union[Path,List[Path]],
         frame: BoundingBox,
         msg5file: Union[Path,List[Path]],
-        search_radius: float = 0.5, # in nautical miles
         time_delta: int = 30, # in minutes
         max_tgt_ships: int = 200,
         preprocessor: Callable[[pd.DataFrame],pd.DataFrame] = lambda x: x
@@ -83,8 +82,6 @@ class SearchAgent:
                 not eligible for TargetShip construction.
         msg12318file: path to a csv file containing AIS messages
                     of type 1,2,3 and 18.
-        search_radius: Radius around agent in which taget vessel 
-                search is rolled out
         max_tgt_ships: maximum number of target ships to retrun
 
         preproceccor: Preprocessor function for input data. 
@@ -121,10 +118,7 @@ class SearchAgent:
         # ships from provided time in `init()`
         self.time_delta = time_delta # in minutes
         
-        # Search radius in [°] around agent
-        self.search_radius = search_radius
-        
-        # Init cell manager
+        # UTM mode
         if isinstance(frame,UTMBoundingBox):
             self._utm = True
             logger.info("UTM mode initialized")
@@ -180,8 +174,7 @@ class SearchAgent:
 
     def get_ships(self, 
                   tpos: TimePosition, 
-                  overlap_tpos: bool = True,
-                  all_trajectories = False,
+                  search_radius: float = 20, # in nautical miles
                   interpolation: str = "linear",
                   return_rejected: bool = False,
                   maxtgap: int = 400,
@@ -192,58 +185,48 @@ class SearchAgent:
         
         tpos: TimePosition object of agent for which 
                 neighbors shall be found
+        
+        search_radius: Radius around agent in which taget vessel 
+                search is rolled out
 
         overlap_tpos: boolean flag indicating whether
                 we only want to return vessels, whose track overlaps
                 with the queried timestamp. If `overlap_tpos` is False,
                 all vessels whose track is within the time delta of the
                 queried timestamp are returned.
-        all_trajectories: boolean flag indicating whether
-                we want to return all TagestVeessel objects
-                without temporal, and spatial filtering.
         """
         assert interpolation in ["linear","spline","auto"], \
             "Interpolation method must be either 'linear', 'spline' or 'auto'"
         # Get neighbors
-        if all_trajectories:
-            tgts = self._construct_target_vessels(self.dynamic_msgs,tpos,maxtgap,maxdgap)
-        else:
-            neigbors = self._get_neighbors(tpos)
-            tgts = self._construct_target_vessels(neigbors, tpos,maxtgap,maxdgap)
+        neigbors = self._get_neighbors(tpos,search_radius)
+        tgts = self._construct_target_vessels(neigbors,tpos,True,maxtgap,maxdgap)
         if return_rejected:
-            tgts, rejected = self.split(tgts,tpos,overlap_tpos)
+            tgts, rejected = self.split(tgts,tpos)
             rejected = self._construct_splines(rejected,mode=interpolation)
         # Contruct Splines for all target ships
         tgts = self._construct_splines(tgts,mode=interpolation)
         return tgts if not return_rejected else (tgts,rejected)
     
-    def get_raw_ships(self, 
-                  tpos: TimePosition, 
-                  all_trajectories = False,
-                  max_tgap: int = 180,
-                  max_dgap: float = 10) -> Targets:
+    def get_all_ships(self, 
+                      max_tgap: int = 180,
+                      max_dgap: float = 10) -> Targets:
         """
-        Returns a list of all target ships without any
-        filtering
-        
-        `all_trajectories` is a boolean flag indicating whether
-        we want to return all TagestVeessel objects or just those
-        overlapping with the queried timestamp.
-        
-        `max_tgap` is the maximum time gap in seconds between two AIS Messages.
-        `max_dgap` is the maximum distance gap in nautical miles between two AIS Messages.
+        Returns a dictionary of all target ships in the
+        frame of the search agent.
         
         
+        `max_tgap` is the maximum time gap in seconds 
+        between two AIS Messages.
+        `max_dgap` is the maximum distance gap in nautical 
+        miles between two AIS Messages.
+        
+        If any of the two gaps is exceeded, the track of 
+        the target ship is split into two tracks at the
+        respective AIS Message.
         """
-        # Get neighbors
-        if all_trajectories:
-            tgts = self._construct_target_vessels(
-                self.dynamic_msgs, tpos,max_tgap,max_dgap)
-        else:
-            neigbors = self._get_neighbors(tpos)
-            tgts = self._construct_target_vessels(
-                neigbors, tpos,max_tgap,max_dgap)
-        return tgts
+        return self._construct_target_vessels(
+            self.dynamic_msgs,None,False,max_tgap,max_dgap
+        )
     
     def _construct_splines(self, 
                            tgts: Targets,
@@ -364,7 +347,7 @@ class SearchAgent:
             return sl[0]
         return sl
 
-    def _get_neighbors(self, tpos: TimePosition):
+    def _get_neighbors(self, tpos: TimePosition, search_radius: float = 20) -> pd.DataFrame:
         """
         Return all AIS messages that are no more than
         `self.search_radius` [nm] away from the given position.
@@ -385,9 +368,9 @@ class SearchAgent:
         # Everywhere else, the distances get smaller as lines of 
         # Longitude are not parallel. Therefore, 
         # this is a conservative estimate.
-        if not self.search_radius == np.inf:
-            sr = (nm2m(self.search_radius) if self._utm 
-                            else self.search_radius/60) # Convert to degrees
+        if not search_radius == np.inf:
+            sr = (nm2m(search_radius) if self._utm 
+                            else search_radius/60) # Convert to degrees
         else:
             sr = np.inf
         d, indices = tree.query(
@@ -404,6 +387,7 @@ class SearchAgent:
             self, 
             df: pd.DataFrame, 
             tpos: TimePosition,
+            overlap: bool,
             max_tgap: int,
             max_dgap: float) -> Targets:
         """
@@ -413,10 +397,15 @@ class SearchAgent:
         The individual AIS Messages are sorted by date
         and are added to the respective TargetVessel's track attribute.
         
+        The `overlap` flag indicates whether we only want to return vessels,
+        whose track overlaps with the queried timestamp. If `overlap` is False,
+        all vessels whose track is within the time delta of the
+        queried timestamp are returned.
+        
         `max_tgap` is the maximum time gap in seconds between two AIS Messages.
         `max_dgap` is the maximum distance gap in nautical miles between two AIS Messages.
         
-        If the time or spatial difference between two AIS Messages is too large,
+        If the temporal or spatial difference between two AIS Messages is too large,
         the track of the target ship is split into two tracks.
         
         """
@@ -427,10 +416,10 @@ class SearchAgent:
             df[Msg12318Columns.MMSI], df[Msg12318Columns.TIMESTAMP],
             df[Msg12318Columns.LAT],  df[Msg12318Columns.LON],
             df[Msg12318Columns.SPEED],df[Msg12318Columns.COURSE]):
-
+            ts: pd.Timestamp # make type hinting happy
             msg = AISMessage(
                 sender=mmsi,
-                timestamp=ts.to_pydatetime(),
+                timestamp=ts.to_pydatetime().timestamp(), # Convert to unix
                 lat=lat,lon=lon,
                 COG=cog,SOG=sog,
                 _utm=self._utm
@@ -438,7 +427,7 @@ class SearchAgent:
             
             if mmsi not in targets:
                 targets[mmsi] = TargetVessel(
-                    ts = tpos.timestamp,
+                    ts = tpos.timestamp if tpos is not None else None,
                     mmsi=mmsi,
                     ship_type=self._get_ship_type(mmsi),
                     length=self._get_ship_length(mmsi),
@@ -453,11 +442,34 @@ class SearchAgent:
                 v.tracks[-1].append(msg)
 
         for tgt in targets.values():
-            #tgt.fill_rot() # Calculate missing 'rate of turn' values via COG
             tgt.find_shell() # Find shell (start/end of traj) of target ship
-            tgt.ts_to_unix() # Convert timestamps to unix
+        
+        # Remove target ships with only one observation
+        self._remove_single_obs(targets)
+        
+        if overlap:
+            self._filter_overlapping(targets,tpos)
+        
+        return targets
+    
+    def _filter_overlapping(self, targets: Targets, tpos: TimePosition) -> None:
+        """
+        Remove target ships whose track does not overlap
+        with the queried timestamp.
+        """
+        for tgt in targets.values():
+            for track in tgt.tracks:
+                if not self._overlaps_search_date(track,tpos):
+                    tgt.tracks.remove(track)
 
-        return targets#self._corrections(targets)
+    def _remove_single_obs(self, targets: Targets) -> Targets:
+        """
+        Remove tracks that only have a single observation.
+        """
+        for tgt in targets.values():
+            for track in tgt.tracks:
+                if len(track) < 2:
+                    tgt.tracks.remove(track)
 
     def _gap_too_large(self, 
                        tgap: int,
@@ -471,7 +483,7 @@ class SearchAgent:
         `dgap` is the maximum distance gap in nautical miles.
         """
         return (
-            (msg_t1.timestamp - msg_t0.timestamp).total_seconds() > tgap or
+            msg_t1.timestamp - msg_t0.timestamp > tgap or
             haversine(msg_t0.lon,msg_t0.lat,msg_t1.lon,msg_t1.lat) > dgap
                 )
     
@@ -539,31 +551,32 @@ class SearchAgent:
 
     def split(self, 
               targets: Targets, 
-              tpos: TimePosition,
-              overlap_tpos: bool = True,
               sd: float = 0.1,
               minlen: int = 100,
               njobs: int = 4) -> tuple[Targets,Targets]:
         """
-        Split the given target ships into two groups:
-        - Accepted: Target ships that are eligible for further processing
-        - Rejected: Target ships that are not eligible for further processing
+        Split the given target ships' trajectories into two groups:
+        - Accepted: Trajectories that meet the following criteria:
+            - Track length is larger than `minlen`
+            - Track has a standard deviation of sd(lat)+sd(lon) smaller than `sd`
+            
+        - Rejected: Trajecoties that do not meet the above criteria.
         
-        `overlap_tpos` is a boolean flag indicating whether
-        we only want to return vessels, whose track overlaps
-        with the queried timestamp. If `overlap_tpos` is False,
-        all vessels whose track is within the time delta of the
-        queried timestamp are returned.
+        The accepted and rejected dictionaries can contain the same MMSIs, 
+        if the target ship has multiple tracks, and only some of them
+        meet the criteria.
         
         """
+        def print_rejetion_rate(n_rejected: int, n_total: int) -> None:
+            logger.info(
+                f"Filtered {n_total} trajectories. "
+                f"{(n_rejected)/n_total*100:.2f}% rejected."
+            )
         if njobs == 1:
-            a,r,_n = self._split_impl(targets,tpos,overlap_tpos,sd,minlen)
+            a,r,_n = self._split_impl(targets,sd,minlen)
             # Number of target ships after filtering
             n_rejected = sum(len(r.tracks) for r in r.values())
-            logger.info(
-                f"Filtered {_n} trajectories. "
-                f"{(n_rejected)/_n*100:.2f}% rejected."
-            )
+            print_rejetion_rate(n_rejected,_n)
             return a,r
         # Split the target ships into `njobs` chunks
         items = list(targets.items())
@@ -577,7 +590,7 @@ class SearchAgent:
         with mp.Pool(njobs) as pool:
             results = pool.starmap(
                 self._split_impl,
-                [(chunk,tpos,overlap_tpos,sd,minlen) for chunk in chunks]
+                [(chunk,sd,minlen) for chunk in chunks]
             )
         accepted, rejected, _n = zip(*results)
         a_out, r_out = {}, {}
@@ -587,18 +600,13 @@ class SearchAgent:
             
         # Number of target ships after filtering
         n_rejected = sum(len(r.tracks) for r in r_out.values())
-        logger.info(
-            f"Filtered {sum(_n)} trajectories. "
-            f"{(n_rejected)/sum(_n)*100:.2f}% rejected."
-        )
+        print_rejetion_rate(n_rejected,_n)
         
         return a_out, r_out
     
 
     def _split_impl(self, 
             targets: Targets, 
-            tpos: TimePosition,
-            overlap_tpos: bool = True,
             sd: float = 0.1,
             minlen: int = 100) -> tuple[Targets,Targets,int]:
         """
@@ -631,14 +639,8 @@ class SearchAgent:
                 elif self._too_small_spatial_deviation(track,sd):
                     self._copy_track(target_ship,rejected,track)
                     continue
-                
-                elif overlap_tpos and not self._overlaps_search_date(track,tpos):
-                    self._copy_track(target_ship,rejected,track)
-                    continue
                 else:
                     self._copy_track(target_ship,accepted,track)
-            
-
         return accepted, rejected, _n
                         
     
@@ -692,12 +694,12 @@ class SearchAgent:
         lon_span = np.ptp([v.lon for v in track])
         return lat_span > span and lon_span > span
     
-    def _overlaps_search_date(self, vessel: TargetVessel, tpos: TimePosition) -> bool:
+    def _overlaps_search_date(self, track: list[AISMessage], tpos: TimePosition) -> bool:
         """
         Return True if the track of the given vessel
         overlaps with the queried timestamp.
         """
-        return (vessel.tracks[0].timestamp < tpos.timestamp < vessel.tracks[-1].timestamp)
+        return (track[0].timestamp < tpos.timestamp < track[-1].timestamp)
 
     def _time_filter(self, df: pd.DataFrame, date: datetime, delta: int) -> pd.DataFrame:
         """
