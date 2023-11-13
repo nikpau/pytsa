@@ -170,12 +170,6 @@ class TimePosition:
         self.timestamp = self._validate_timestamp()
         self.timestamp = self.timestamp.timestamp()
 
-        # if self.lat is None or self.lon is None:
-        #     self.lat, self.lon = utm.to_latlon(
-        #         self.easting, self.northing,
-        #         northern=True
-        #     )
-
         self._is_utm = as_utm
         if self.easting is None or self.northing is None:
             self.easting, self.northing, *_ = utm.from_latlon(
