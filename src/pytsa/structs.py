@@ -146,23 +146,6 @@ class UTMBoundingBox:
 # Bounding boxes ------------------------------------
 BoundingBox = Union[LatLonBoundingBox, UTMBoundingBox]
 
-# Cells for the grid ---------------------------------
-@dataclass
-class LatLonCell(LatLonBoundingBox):
-    index: int = NOINDEX
-    
-    def __repr__(self) -> str:
-        return f"{super().__repr__()}|idx={self.index}"
-    
-@dataclass
-class UTMCell(UTMBoundingBox):
-    index: int = NOINDEX
-    
-    def __repr__(self) -> str:
-        return f"{super().__repr__()}|idx={self.index}"
-    
-Cell = Union[LatLonCell, UTMCell]
-
 class TimePosition:
     """
     Time and position object
