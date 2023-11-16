@@ -13,12 +13,14 @@ from scipy.spatial import cKDTree
 import multiprocessing as mp
 import utm
 
-from pytsa.logger import Loader, logger
-from pytsa.structs import (
-    BoundingBox, Position, TimePosition, 
-    Msg12318Columns, Msg5Columns,UTMBoundingBox
+from .logger import Loader, logger
+from .structs import (
+    BoundingBox, Position, TimePosition ,UTMBoundingBox
 )
-from pytsa.targetship import TargetVessel, AISMessage, InterpolationError
+from ..decode.filedescriptor import (
+    Msg12318Columns, Msg5Columns
+)
+from .targetship import TargetVessel, AISMessage, InterpolationError
 
 # Exceptions
 class FileLoadingError(Exception):

@@ -199,38 +199,3 @@ class TimePosition:
             return UTMPosition(self.northing,self.easting)
         else:
             return Position(self.lat,self.lon)
-
-@dataclass
-class Msg12318Columns:
-    """
-    Data columns for message 1,2,3 and 18
-    source files. If your decoded file features
-    different column names,
-    please change them here.
-    """
-    MMSI: str = "MMSI"
-    LAT: str = "lat"
-    LON: str = "lon"
-    MESSAGE_ID: str = "message_id"
-    TIMESTAMP: str = "timestamp"
-    SPEED: str = "speed"
-    COURSE: str = "course"
-    TURN: str = "turn"
-
-@dataclass
-class Msg5Columns:
-    """
-    Data columns for message 5
-    source files. 
-    If your decoded file features
-    different column names,
-    please change them here.
-    """
-    MMSI: str = "MMSI"
-    SHIPTYPE = "ship_type"
-    SHIPNAME = "shipname"
-    CALLSIGN = "callsign"
-    TO_BOW = "to_bow"
-    TO_STERN = "to_stern"
-    TO_PORT = "to_port"
-    TO_STARBOARD = "to_starboard"
