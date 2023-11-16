@@ -6,10 +6,13 @@ from datetime import datetime
 from enum import Enum
 import ciso8601
 from typing import List, Union
+import numpy as np
 import utm
 
 Latitude  = float
 Longitude = float
+MMSI = int
+UNIX_TIMESTAMP = int
 
 Position = namedtuple("Position", ["lat","lon"])
 UTMPosition = namedtuple("UTMPosition", ["northing","easting"])
@@ -25,6 +28,46 @@ NOINDEX = NOINDEX_TYPE()
 class ShellError(Exception):
     pass
 
+@dataclass
+class AISMessage:
+    """
+    AIS Message object
+    """
+    sender: MMSI
+    timestamp: UNIX_TIMESTAMP
+    lat: Latitude
+    lon: Longitude
+    COG: float # Course over ground [degrees]
+    SOG: float # Speed over ground [knots]
+    ROT: float = None # Rate of turn [degrees/minute]
+    dROT: float = None # Change of ROT [degrees/minute²]
+    _utm: bool = False
+
+    def __post_init__(self) -> None:
+        self.easting, self.northing, self.zone_number, self.zone_letter = utm.from_latlon(
+            self.lat, self.lon
+        )
+        self.as_array = np.array(
+            [self.northing,self.easting,self.COG,self.SOG]
+        ).reshape(1,-1) if self._utm else np.array(
+            [self.lat,self.lon,self.COG,self.SOG]
+        ).reshape(1,-1)
+        self.ROT = self._rot_handler(self.ROT)
+    
+    def _rot_handler(self, rot: float) -> float:
+        """
+        Handles the Rate of Turn (ROT) value
+        """
+        try: 
+            rot = float(rot) 
+        except: 
+            return None
+        
+        sign = np.sign(rot)
+        if abs(rot) == 127 or abs(rot) == 128:
+            return None
+        else:
+            return sign * (rot / 4.733)**2
 class ShipType(Enum):
     """
     Dataclass to store the type of vessel

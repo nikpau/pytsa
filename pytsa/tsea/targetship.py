@@ -8,39 +8,28 @@ evenly-sized grids
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Union
 
 import numpy as np
-import utm
 from matplotlib import pyplot as plt
 from matplotlib.gridspec import GridSpec
 from scipy.interpolate import InterpolatedUnivariateSpline, interp1d
-from .structs import ShipType
-from .logger import logger
-
-# Settings for numerical integration
-Q_SETTINGS = dict(epsabs=1e-13,epsrel=1e-13,limit=500)
-
+from .structs import ShipType, AISMessage, MMSI
+from ..logger import logger
 
 # Type aliases
 Latitude = float
 Longitude = float
-MMSI = int
-UNIX_TIMESTAMP = float
 
 # Constants
 PI = np.pi
 
 # Exceptions
-
 class OutofTimeBoundsError(Exception):
     pass
-
 class InterpolationError(Exception):
     pass
-
 
 class TrackSplines:
     """
@@ -142,46 +131,6 @@ class TrackLinear:
         )
 
 
-@dataclass
-class AISMessage:
-    """
-    AIS Message object
-    """
-    sender: MMSI
-    timestamp: UNIX_TIMESTAMP
-    lat: Latitude
-    lon: Longitude
-    COG: float # Course over ground [degrees]
-    SOG: float # Speed over ground [knots]
-    ROT: float = None # Rate of turn [degrees/minute]
-    dROT: float = None # Change of ROT [degrees/minute²]
-    _utm: bool = False
-
-    def __post_init__(self) -> None:
-        self.easting, self.northing, self.zone_number, self.zone_letter = utm.from_latlon(
-            self.lat, self.lon
-        )
-        self.as_array = np.array(
-            [self.northing,self.easting,self.COG,self.SOG]
-        ).reshape(1,-1) if self._utm else np.array(
-            [self.lat,self.lon,self.COG,self.SOG]
-        ).reshape(1,-1)
-        self.ROT = self._rot_handler(self.ROT)
-    
-    def _rot_handler(self, rot: float) -> float:
-        """
-        Handles the Rate of Turn (ROT) value
-        """
-        try: 
-            rot = float(rot) 
-        except: 
-            return None
-        
-        sign = np.sign(rot)
-        if abs(rot) == 127 or abs(rot) == 128:
-            return None
-        else:
-            return sign * (rot / 4.733)**2
         
 
 class TargetVessel:
