@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, List, Union
@@ -10,16 +9,16 @@ from math import radians, cos, sin, asin, sqrt
 import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
-import multiprocessing as mp
 import utm
 
-from .logger import Loader, logger
+from ..logger import Loader, logger
 from .structs import (
     BoundingBox, Position, TimePosition ,UTMBoundingBox
 )
 from ..decode.filedescriptor import (
     Msg12318Columns, Msg5Columns
 )
+from ..decode.ais_decoder import decode_from_file
 from .targetship import TargetVessel, AISMessage, InterpolationError
 
 # Exceptions
@@ -29,7 +28,6 @@ class FileLoadingError(Exception):
 # Type aliases
 MMSI = int
 Targets = dict[MMSI,TargetVessel]
-
 
 def m2nm(m: float) -> float:
     """Convert meters to nautical miles"""
@@ -72,9 +70,9 @@ class SearchAgent:
         msg12318file: Union[Path,List[Path]],
         frame: BoundingBox,
         msg5file: Union[Path,List[Path]],
-        time_delta: int = 30, # in minutes
         max_tgt_ships: int = 200,
-        preprocessor: Callable[[pd.DataFrame],pd.DataFrame] = lambda x: x
+        preprocessor: Callable[[pd.DataFrame],pd.DataFrame] = lambda x: x,
+        decoded: bool = True
         ) -> None:
        
         """ 
@@ -84,10 +82,17 @@ class SearchAgent:
                 not eligible for TargetShip construction.
         msg12318file: path to a csv file containing AIS messages
                     of type 1,2,3 and 18.
+        msg5file: path to a csv file containing AIS messages
+                    of type 5.
         max_tgt_ships: maximum number of target ships to retrun
 
         preproceccor: Preprocessor function for input data. 
                 Defaults to the identity.
+        decoded: boolean flag indicating whether the input data
+                is already decoded or not. If `decoded` is False,
+                the input data is decoded on the fly. Please note
+                that this process is magnitudes slower than using
+                decoded data.
         """
 
         if not isinstance(msg12318file,list):
@@ -117,8 +122,11 @@ class SearchAgent:
         self.max_tgt_ships = max_tgt_ships
         
         # Maximum temporal deviation of target
-        # ships from provided time in `init()`
-        self.time_delta = time_delta # in minutes
+        # ships from provided time in `init()`.
+        # This is used internally to catch
+        # all messages around the queried time,
+        # for building and interpolating trajectories.
+        self.time_delta = 30 # in minutes
         
         # UTM mode
         if isinstance(frame,UTMBoundingBox):
@@ -134,6 +142,10 @@ class SearchAgent:
 
         # Custom preprocessor function for input data
         self.preprocessor = preprocessor
+        
+        # Flag indicating whether the input data
+        # is already decoded or not
+        self.decoded = decoded
         
         # Length of the original AIS message dataframe
         self._n_original = 0
@@ -264,7 +276,7 @@ class SearchAgent:
             snippets.append(msg5)
         msg5 = pd.concat(snippets)
         msg5 = msg5[msg5[Msg5Columns.MMSI].isin(self.dynamic_msgs[Msg12318Columns.MMSI])]
-        return msg5
+        return decode_from_file(msg5,None,False) if not self.decoded else msg5
 
     def _load_dynamic_messages(self) -> pd.DataFrame:
         """
@@ -289,8 +301,8 @@ class SearchAgent:
         except Exception as e:
             logger.error(f"Error while loading cell data: {e}")
             raise FileLoadingError(e)
-
-        return pd.concat(snippets)
+        stitched = pd.concat(snippets)
+        return decode_from_file(stitched,None,False) if not self.decoded else stitched
             
     def _build_kd_tree(self, data: pd.DataFrame) -> cKDTree:
         """
@@ -551,150 +563,6 @@ class SearchAgent:
                     msg_t1.lon = lont1
                     msg_t1.lat = latt1
 
-    def split(self, 
-              targets: Targets, 
-              sd: float = 0.1,
-              minlen: int = 100,
-              njobs: int = 4) -> tuple[Targets,Targets]:
-        """
-        Split the given target ships' trajectories into two groups:
-        - Accepted: Trajectories that meet the following criteria:
-            - Track length is larger than `minlen`
-            - Track has a standard deviation of sd(lat)+sd(lon) smaller than `sd`
-            
-        - Rejected: Trajecoties that do not meet the above criteria.
-        
-        The accepted and rejected dictionaries can contain the same MMSIs, 
-        if the target ship has multiple tracks, and only some of them
-        meet the criteria.
-        
-        """
-        def print_rejetion_rate(n_rejected: int, n_total: int) -> None:
-            logger.info(
-                f"Filtered {n_total} trajectories. "
-                f"{(n_rejected)/n_total*100:.2f}% rejected."
-            )
-        if njobs == 1:
-            a,r,_n = self._split_impl(targets,sd,minlen)
-            # Number of target ships after filtering
-            n_rejected = sum(len(r.tracks) for r in r.values())
-            print_rejetion_rate(n_rejected,_n)
-            return a,r
-        # Split the target ships into `njobs` chunks
-        items = list(targets.items())
-        mmsis, target_ships = zip(*items)
-        mmsi_chunks = np.array_split(mmsis,njobs)
-        target_ship_chunks = np.array_split(target_ships,njobs)
-        chunks = []
-        for mmsi_chunk, target_ship_chunk in zip(mmsi_chunks,target_ship_chunks):
-            chunks.append(dict(zip(mmsi_chunk,target_ship_chunk)))
-        
-        with mp.Pool(njobs) as pool:
-            results = pool.starmap(
-                self._split_impl,
-                [(chunk,sd,minlen) for chunk in chunks]
-            )
-        accepted, rejected, _n = zip(*results)
-        a_out, r_out = {}, {}
-        for a,r in zip(accepted,rejected):
-            a_out.update(a)
-            r_out.update(r)
-            
-        # Number of target ships after filtering
-        n_rejected = sum(len(r.tracks) for r in r_out.values())
-        print_rejetion_rate(n_rejected,_n)
-        
-        return a_out, r_out
-    
-
-    def _split_impl(self, 
-            targets: Targets, 
-            sd: float = 0.1,
-            minlen: int = 100) -> tuple[Targets,Targets,int]:
-        """
-        Also remove vessels whose track lies outside
-        the queried timestamp.
-        
-        `overlap_tpos` is a boolean flag indicating whether
-        we only want to return vessels, whose track overlaps
-        with the queried timestamp. If `overlap_tpos` is False,
-        all vessels whose track is within the time delta of the
-        queried timestamp are returned.
-        
-        """
-        rejected: Targets = {}
-        accepted: Targets = {}
-
-
-        nships = len(targets)
-        _n = 0 # Number of trajectories before split
-        for i, (_,target_ship) in enumerate(targets.items()):
-            logger.info(f"Filtering target ship {i+1}/{nships}")
-            for track in target_ship.tracks:
-                _n += 1
-                # Remove vessels whose track is shorter than `minlen`
-                if self._too_few_obs(track,minlen):
-                    self._copy_track(target_ship,rejected,track)
-                    continue
-                
-                # Remove vessels whose track has a larger standard deviation
-                elif self._too_small_spatial_deviation(track,sd):
-                    self._copy_track(target_ship,rejected,track)
-                    continue
-                else:
-                    self._copy_track(target_ship,accepted,track)
-        return accepted, rejected, _n
-                        
-    
-    def _copy_track(self,
-                    vessel: TargetVessel, 
-                    target: Targets,
-                    track: list[AISMessage]) -> None:
-        """
-        Copy a track from one TargetVessel object to another,
-        and delete it from the original.
-        """
-        if vessel.mmsi not in target:
-            target[vessel.mmsi] = deepcopy(vessel)
-            target[vessel.mmsi].tracks = []
-        target[vessel.mmsi].tracks.append(track)
-
-
-    def _merge_tracks(self,
-                      t1: TargetVessel,
-                      t2: TargetVessel) -> TargetVessel:
-        """
-        Merge two target vessels into one.
-        """
-        assert t1.mmsi == t2.mmsi, "Can only merge tracks of same target vessel"
-        t1.tracks.extend(t2.tracks)
-        return t1
-
-    def _too_few_obs(self, track: list[AISMessage], n: int) -> bool:
-        """
-        Return True if the length of the track of the given vessel
-        is smaller than `n`.
-        """
-        return len(track) < n
-    
-    def _too_small_spatial_deviation(self, track: list[AISMessage], sd: float) -> bool:
-        """
-        Return True if the summed standard deviation of lat/lon 
-        of the track of the given vessel is smallerw than `sd`.
-        Unit of `sd` is [°].
-        """
-        sdlon = np.sqrt(np.var([v.lon for v in track]))
-        sdlat = np.sqrt(np.var([v.lat for v in track]))
-        return (sdlon+sdlat) < sd
-    
-    def _track_span_filter(self, track: list[AISMessage], span: float) -> bool:
-        """
-        Return True if the lateral and longitudinal span
-        of the track of the given vessel is smaller than `span`.
-        """
-        lat_span = np.ptp([v.lat for v in track])
-        lon_span = np.ptp([v.lon for v in track])
-        return lat_span > span and lon_span > span
     
     def _overlaps_search_date(self, track: list[AISMessage], tpos: TimePosition) -> bool:
         """
