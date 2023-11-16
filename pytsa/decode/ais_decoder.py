@@ -27,7 +27,7 @@ _DYNAMIC_TYPES = (1,2,3,18,)
 # Slot names for message fields
 MSG5SLOTS = msg.MessageType5.__slots__
 MSG12318SLOTS = msg.MessageType1.__slots__
-MSGSLOTS = MSG5SLOTS | MSG12318SLOTS
+MSGSLOTS = tuple[str]
 
 # Default value for missing data
 _NA = "NA"

@@ -1,2 +1,2 @@
-from rules import Recipe
-from splitter import TrajectorySplitter
+from .rules import Recipe
+from .splitter import TrajectorySplitter

@@ -27,11 +27,10 @@ class Recipe:
         Cook the recipe into a function that can be passed to the
         TrajectorySplitter class.
         """
-        def cooked(track: list[AISMessage]) -> bool:
-            return all(func(track) for func in self.funcs)
-        
-        return cooked
+        return self.cooked
             
+    def cooked(self,track: list[AISMessage]) -> bool:
+        return all(func(track) for func in self.funcs)
 
 # Signature checker-------------------------------------------------------------
 def _check_signature(func) -> None:
@@ -41,10 +40,10 @@ def _check_signature(func) -> None:
     if not callable(func):
         raise TypeError(f"Expected a callable, got {type(func)}")
     sig = signature(func)
-    if len(sig.parameters) != 1:
+    if arg := next(iter(sig.parameters)) != "track":
         raise TypeError(
-            f"Expected a function with exactly one parameter, "
-            f"got {len(sig.parameters)} parameters"
+            f"Expected a function with parameter `track` as first argument, "
+            f"got {arg}"
         )
     if sig.parameters["track"].annotation != list[AISMessage]:
         raise TypeError(
@@ -62,6 +61,9 @@ def _check_signature(func) -> None:
 All rule functions must have the following signature:
     def rule_name(track: list[AISMessage], *args, **kwargs) -> bool:
         ...
+        
+Rules must be defined such that they return True if the track is to be
+rejected, and False if the track is to be accepted. 
         
 To make a recipe for the TrajectorySplitter class, you are expected to
 fix the rule function's arguments, such that only a one-argument function

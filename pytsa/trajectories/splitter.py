@@ -63,10 +63,7 @@ class TrajectorySplitter:
             chunks.append(dict(zip(mmsi_chunk,target_ship_chunk)))
         
         with mp.Pool(njobs) as pool:
-            results = pool.starmap(
-                self._split_impl,
-                [(chunk) for chunk in chunks]
-            )
+            results = pool.map(self._split_impl,chunks)
         accepted, rejected, _n = zip(*results)
         a_out, r_out = {}, {}
         for a,r in zip(accepted,rejected):
@@ -75,7 +72,7 @@ class TrajectorySplitter:
             
         # Number of target ships after filtering
         n_rejected = sum(len(r.tracks) for r in r_out.values())
-        print_rejetion_rate(n_rejected,_n)
+        print_rejetion_rate(n_rejected,sum(_n))
         
         return a_out, r_out
     
