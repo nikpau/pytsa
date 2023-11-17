@@ -12,13 +12,14 @@ from scipy.spatial import cKDTree
 import utm
 
 from ..logger import Loader, logger
-from .structs import (
+from ..structs import (
     BoundingBox, Position, TimePosition ,UTMBoundingBox
 )
 from ..decode.filedescriptor import (
     Msg12318Columns, Msg5Columns
 )
 from ..decode.ais_decoder import decode_from_file
+from ..tread.tread import VesselStatus, ClusterType
 from .targetship import TargetVessel, AISMessage, InterpolationError
 
 # Exceptions
@@ -431,6 +432,7 @@ class SearchAgent:
             df[Msg12318Columns.LAT],  df[Msg12318Columns.LON],
             df[Msg12318Columns.SPEED],df[Msg12318Columns.COURSE]):
             ts: pd.Timestamp # make type hinting happy
+            
             msg = AISMessage(
                 sender=mmsi,
                 timestamp=ts.to_pydatetime().timestamp(), # Convert to unix
@@ -440,11 +442,13 @@ class SearchAgent:
             )
             
             if mmsi not in targets:
+                msg._cluster_type = ClusterType.entry
                 targets[mmsi] = TargetVessel(
                     ts = tpos.timestamp if tpos is not None else None,
                     mmsi=mmsi,
                     ship_type=self._get_ship_type(mmsi),
                     length=self._get_ship_length(mmsi),
+                    status=VesselStatus.sailing,
                     tracks=[[msg]]
                 )
             else:

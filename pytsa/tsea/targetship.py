@@ -15,8 +15,9 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.gridspec import GridSpec
 from scipy.interpolate import InterpolatedUnivariateSpline, interp1d
-from .structs import ShipType, AISMessage, MMSI
+from ..structs import ShipType, AISMessage, MMSI
 from ..logger import logger
+from ..tread.tread import VesselStatus
 
 # Type aliases
 Latitude = float
@@ -129,10 +130,7 @@ class TrackLinear:
         self.dROT = interp1d(
             timestamps, [0.0 for _ in self.track]
         )
-
-
         
-
 class TargetVessel:
     """
     Central object for the pytsa package. It holds
@@ -200,7 +198,8 @@ class TargetVessel:
         mmsi: MMSI, 
         tracks: List[List[AISMessage]],
         ship_type: ShipType = None,
-        length: float = None
+        length: float = None,
+        status: VesselStatus = None
         ) -> None:
         
         self.ts = ts
