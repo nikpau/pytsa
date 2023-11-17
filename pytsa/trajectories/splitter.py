@@ -42,7 +42,7 @@ class TrajectorySplitter:
         meet the criteria.
         
         """
-        def print_rejetion_rate(n_rejected: int, n_total: int) -> None:
+        def print_rejection_rate(n_rejected: int, n_total: int) -> None:
             logger.info(
                 f"Filtered {n_total} trajectories. "
                 f"{(n_rejected)/n_total*100:.2f}% rejected."
@@ -51,7 +51,7 @@ class TrajectorySplitter:
             a,r,_n = self._split_impl(self.data)
             # Number of target ships after filtering
             n_rejected = sum(len(r.tracks) for r in r.values())
-            print_rejetion_rate(n_rejected,_n)
+            print_rejection_rate(n_rejected,_n)
             return a,r
         # Split the target ships into `njobs` chunks
         items = list(self.data.items())
@@ -72,7 +72,7 @@ class TrajectorySplitter:
             
         # Number of target ships after filtering
         n_rejected = sum(len(r.tracks) for r in r_out.values())
-        print_rejetion_rate(n_rejected,sum(_n))
+        print_rejection_rate(n_rejected,sum(_n))
         
         return a_out, r_out
     
