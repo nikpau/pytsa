@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Callable, List, Union
 from more_itertools import pairwise
 from math import radians, cos, sin, asin, sqrt
+import multiprocessing as mp
 
 import numpy as np
 import pandas as pd
@@ -13,7 +14,8 @@ import utm
 
 from ..logger import Loader, logger
 from ..structs import (
-    BoundingBox, Position, TimePosition ,UTMBoundingBox
+    BoundingBox, Position, TimePosition ,UTMBoundingBox,
+    HQUANTILES, SQUANTILES
 )
 from ..decode.filedescriptor import (
     Msg12318Columns, Msg5Columns
@@ -53,6 +55,20 @@ def haversine(lon1, lat1, lon2, lat2, miles = True):
     c = 2 * asin(sqrt(a)) 
     r = 3956 if miles else 6371 # Radius of earth in kilometers or miles
     return c * r
+
+def _heading_change(h1,h2):
+    """
+    calculate the change between two headings
+    such that the smallest angle is returned.
+    """
+
+    diff = abs(h1-h2)
+    if diff > 180:
+        diff = 360 - diff
+    if (h1 + diff) % 360 == h2:
+        return diff
+    else:
+        return -diff
 
 class SearchAgent:
     """
@@ -191,9 +207,7 @@ class SearchAgent:
                   tpos: TimePosition, 
                   search_radius: float = 20, # in nautical miles
                   interpolation: str = "linear",
-                  return_rejected: bool = False,
-                  maxtgap: int = 400,
-                  maxdgap: float = 10) -> Targets:
+                  return_rejected: bool = False) -> Targets:
         """
         Returns a list of target ships
         present in the neighborhood of the given position. 
@@ -214,7 +228,7 @@ class SearchAgent:
             "Interpolation method must be either 'linear', 'spline' or 'auto'"
         # Get neighbors
         neigbors = self._get_neighbors(tpos,search_radius)
-        tgts = self._construct_target_vessels(neigbors,tpos,True,maxtgap,maxdgap)
+        tgts = self.construct_target_vessels(neigbors,tpos,True,njobs=1)
         if return_rejected:
             tgts, rejected = self.split(tgts,tpos)
             rejected = self._construct_splines(rejected,mode=interpolation)
@@ -222,25 +236,13 @@ class SearchAgent:
         tgts = self._construct_splines(tgts,mode=interpolation)
         return tgts if not return_rejected else (tgts,rejected)
     
-    def get_all_ships(self, 
-                      max_tgap: int = 180,
-                      max_dgap: float = 10) -> Targets:
+    def get_all_ships(self,njobs: int = 4, skip_filter: bool = False) -> Targets:
         """
         Returns a dictionary of all target ships in the
         frame of the search agent.
-        
-        
-        `max_tgap` is the maximum time gap in seconds 
-        between two AIS Messages.
-        `max_dgap` is the maximum distance gap in nautical 
-        miles between two AIS Messages.
-        
-        If any of the two gaps is exceeded, the track of 
-        the target ship is split into two tracks at the
-        respective AIS Message.
         """
-        return self._construct_target_vessels(
-            self.dynamic_msgs,None,False,max_tgap,max_dgap
+        return self._mp_construct_target_vessels(
+            self.dynamic_msgs,njobs,skip_filter
         )
     
     def _construct_splines(self, 
@@ -348,7 +350,7 @@ class SearchAgent:
         """
         Return the ship length of a given MMSI number.
 
-        If more than one ship length is found, the first
+        If more than one ship length is found, the largest
         one is returned and a warning is logged.
         """
         raw = self.static_msgs[self.static_msgs[Msg5Columns.MMSI] == mmsi]\
@@ -358,8 +360,8 @@ class SearchAgent:
         if sl.size > 1:
             logger.warning(
                 f"More than one ship length found for MMSI {mmsi}. "
-                f"Found {sl}. Returning {sl[0]}.")
-            return sl[0]
+                f"Found {sl}. Returning {max(sl)}.")
+            return max(sl)
         return sl
 
     def _get_neighbors(self, tpos: TimePosition, search_radius: float = 20) -> pd.DataFrame:
@@ -397,15 +399,100 @@ class SearchAgent:
         res = [indices[i] for i,j in enumerate(d) if j != float("inf")]
 
         return filtered.iloc[res]
+    
+    def _distribute(self, df: pd.DataFrame) -> list[pd.DataFrame]:
+        """
+        Distribute a given dataframe into smaller
+        dataframes, each containing only messages
+        from a single MMSI.
+        """
+        mmsis = df[Msg12318Columns.MMSI].unique()
+        return [df[df[Msg12318Columns.MMSI] == mmsi] for mmsi in mmsis]
+    
+    def _impl_construct_target_vessel(self, 
+                                      df: pd.DataFrame, 
+                                      skip_filter: bool = False) -> Targets:
+        """
+        Construct a single TargetVessel object from a given dataframe.
+        """
+        MMSI = df[Msg12318Columns.MMSI].unique()
+        assert len(MMSI) == 1, \
+            "Input dataframe must only contain messages from a single MMSI"
+        MMSI = int(MMSI)
+        # Initialize TargetVessel object
+        tv =  TargetVessel(
+            ts = None,
+            mmsi=MMSI,
+            ship_type=self._get_ship_type(MMSI),
+            length=self._get_ship_length(MMSI),
+            status=VesselStatus.sailing,
+            tracks=[[]]
+        )
+        first = True
+            
+        df = df.sort_values(by=Msg12318Columns.TIMESTAMP)
+        
+        for ts,lat,lon,sog,cog in zip(
+            df[Msg12318Columns.TIMESTAMP], df[Msg12318Columns.LAT],  
+            df[Msg12318Columns.LON],       df[Msg12318Columns.SPEED],
+            df[Msg12318Columns.COURSE]):
+            ts: pd.Timestamp # make type hinting happy
+            
+            msg = AISMessage(
+                sender=MMSI,
+                timestamp=ts.to_pydatetime().timestamp(), # Convert to unix
+                lat=lat,lon=lon,
+                COG=cog,SOG=sog,
+                _utm=self._utm
+            )
+            if first:
+                tv.tracks[-1].append(msg)
+                first = False
+            else:
+                # Split track if change in speed or heading is too large
+                if not skip_filter:
+                    if self._speed_change_too_large(tv.tracks[-1][-1],msg) or \
+                        self._heading_change_too_large(tv.tracks[-1][-1],msg):
+                        tv.tracks.append([])
+                tv.tracks[-1].append(msg)
+        
+        # Remove tracks with only one observation
+        for track in tv.tracks:
+                if len(track) < 2:
+                    tv.tracks.remove(track)
+          
+        tv.find_shell()
+        return {MMSI:tv}
+    
+    def _mp_construct_target_vessels(self, df: pd.DataFrame,
+                                     njobs: int = 4,
+                                     skip_filter: bool = False) -> Targets:
+        """
+        Adaption from `_construct_target_vessels` with multiprocessing.
+        The initial dataframe is split into smaller dataframes, each
+        containing only messages from a single MMSI. These dataframes
+        are then processed in parallel and the results are merged.
+        """
+        targets = {}
+        single_frames = self._distribute(df)
+        with mp.Pool(njobs) as pool:
+            results = pool.starmap(
+                self._impl_construct_target_vessel,
+                [(frame,skip_filter) for frame in single_frames]
+            )  
+        for res in results:
+            targets.update(res)
+        
+        return targets
 
-    def _construct_target_vessels(
+    def _sp_construct_target_vessels(
             self, 
             df: pd.DataFrame, 
             tpos: TimePosition,
-            overlap: bool,
-            max_tgap: int,
-            max_dgap: float) -> Targets:
+            overlap: bool) -> Targets:
         """
+        Single-process version of `_construct_target_vessels`.
+        
         Walk through the rows of `df` and construct a 
         `TargetVessel` object for every unique MMSI. 
         
@@ -452,9 +539,9 @@ class SearchAgent:
                     tracks=[[msg]]
                 )
             else:
-                # Split track if time or spatial difference is too large
-                if self._gap_too_large(
-                    max_tgap,max_dgap,targets[mmsi].tracks[-1][-1],msg):
+                # Split track if change in speed or heading is too large
+                if self._speed_change_too_large(targets[mmsi].tracks[-1][-1],msg) or \
+                    self._heading_change_too_large(targets[mmsi].tracks[-1][-1],msg):
                     targets[mmsi].tracks.append([])
                 v = targets[mmsi]
                 v.tracks[-1].append(msg)
@@ -469,6 +556,19 @@ class SearchAgent:
             self._filter_overlapping(targets,tpos)
         
         return targets
+    
+    def construct_target_vessels(self,df: pd.DataFrame,
+                                 tpos: TimePosition, 
+                                 overlap: bool = False, 
+                                 njobs: int = 4) -> Targets:
+        """
+        Construct a dictionary of TargetVessel objects
+        from a given dataframe.
+        """
+        if njobs == 1:
+            return self._sp_construct_target_vessels(df,tpos,overlap)
+        else:
+            return self._mp_construct_target_vessels(df,njobs)
     
     def _filter_overlapping(self, targets: Targets, tpos: TimePosition) -> None:
         """
@@ -504,6 +604,23 @@ class SearchAgent:
             msg_t1.timestamp - msg_t0.timestamp > tgap or
             haversine(msg_t0.lon,msg_t0.lat,msg_t1.lon,msg_t1.lat) > dgap
                 )
+    def _speed_change_too_large(self,msg_t0: AISMessage, msg_t1: AISMessage) -> bool:
+        """
+        Return True if the change in speed between two AIS Messages
+        is larger than the 95% quantile of the speed change distribution.
+        """
+        return (
+            msg_t1.SOG - msg_t0.SOG > SQUANTILES[95]
+        )
+        
+    def _heading_change_too_large(self,msg_t0: AISMessage, msg_t1: AISMessage) -> bool:
+        """
+        Return True if the change in heading between two AIS Messages
+        is larger than the 95% quantile of the heading change distribution.
+        """
+        return not (
+            HQUANTILES[95][0] < _heading_change(msg_t0.COG,msg_t1.COG) < HQUANTILES[95][1]
+        )
     
     def _corrections(self, targets: Targets) -> Targets:
         """
