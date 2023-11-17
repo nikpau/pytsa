@@ -14,8 +14,27 @@ Longitude = float
 MMSI = int
 UNIX_TIMESTAMP = int
 
-Position = namedtuple("Position", ["lat","lon"])
-UTMPosition = namedtuple("UTMPosition", ["northing","easting"])
+@dataclass
+class Position:
+    """
+    Position object
+    """
+    lat: Latitude
+    lon: Longitude
+    
+    def __hash__(self) -> int:
+        return hash((self.lat,self.lon))
+    
+@dataclass
+class UTMPosition:
+    """
+    Position object
+    """
+    northing: float
+    easting: float
+    
+    def __hash__(self) -> int:
+        return hash((self.northing,self.easting))
 
 class NONAME_TYPE:
     pass
@@ -42,6 +61,10 @@ class AISMessage:
     ROT: float = None # Rate of turn [degrees/minute]
     dROT: float = None # Change of ROT [degrees/minute²]
     _utm: bool = False
+    
+    # Fields for Trajectory Clustering ------------------
+    _cluster_type: str = "" # ["EN","EX","PO"]
+    _label_group: Union[int,None] = None
 
     def __post_init__(self) -> None:
         self.easting, self.northing, self.zone_number, self.zone_letter = utm.from_latlon(
