@@ -89,7 +89,7 @@ class Loader:
             timeout (float, optional): Sleep time between prints. Defaults to 0.1.
         """
         self.desc = (
-            f"Buffering cell from {bb.LATMIN:.3f}°N-{bb.LATMAX:.3f}°N "
+            f"Buffering area from {bb.LATMIN:.3f}°N-{bb.LATMAX:.3f}°N "
             f"and {bb.LONMIN:.3f}°E-{bb.LONMAX:.3f}°E"
         )
         self.timeout = 0.1
