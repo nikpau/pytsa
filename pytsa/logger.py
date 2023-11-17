@@ -4,6 +4,8 @@ import sys
 from threading import Thread
 import time
 
+import psutil
+
 # Custom formatter
 # Colorize logger output if needed
 color2num = dict(
@@ -117,6 +119,50 @@ class Loader:
         logger.info(f"{self.desc}")
         self.t_end = time.perf_counter()
         logger.info(f"Cell Buffering completed in [{(self.t_end-self.t_start):.1f} s]")
+
+    def __exit__(self, exc_type, exc_value, tb):
+        # handle exceptions with those variables ^
+        self.stop()
+
+# Context manager that continuously shows memory usage
+# while running the code inside the context.
+class MemoryLoader:
+    def __init__(self):
+        self.timeout = 0.2
+
+        self._thread = Thread(target=self._show_memory_usage, daemon=True)
+        self.done = False
+
+    def start(self):
+        self.t_start = time.perf_counter()
+        self._thread.start()
+        return self
+
+    def _show_memory_usage(self):
+        """
+        Prints memory usage every `timeout` seconds
+        """
+        while True:
+            if self.done:
+                break
+            print(
+                f"Memory usage: {psutil.virtual_memory().percent}% "
+                f"[{psutil.virtual_memory().used/1e9:.2f} GB]", 
+                end="\r")
+            time.sleep(self.timeout)
+
+    def __enter__(self):
+        self.start()
+
+    def stop(self):
+        self.done = True
+        print(" "*100, end = "\r")
+        self.t_end = time.perf_counter()
+        print(
+            f"Loading took {self.t_end - self.t_start:.2f} seconds \n"
+            f"Memory usage: {psutil.virtual_memory().percent}% "
+            f"[{psutil.virtual_memory().used/1e9:.2f} GB]"
+            )
 
     def __exit__(self, exc_type, exc_value, tb):
         # handle exceptions with those variables ^
