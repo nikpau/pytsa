@@ -21,7 +21,7 @@ from ..decode.filedescriptor import (
     Msg12318Columns, Msg5Columns
 )
 from ..decode.ais_decoder import decode_from_file
-from ..tread.tread import VesselStatus, ClusterType
+#from ..tread.tread import VesselStatus, ClusterType
 from .targetship import TargetVessel, AISMessage, InterpolationError
 
 # Exceptions
@@ -425,7 +425,6 @@ class SearchAgent:
             mmsi=MMSI,
             ship_type=self._get_ship_type(MMSI),
             length=self._get_ship_length(MMSI),
-            status=VesselStatus.sailing,
             tracks=[[]]
         )
         first = True
@@ -529,13 +528,11 @@ class SearchAgent:
             )
             
             if mmsi not in targets:
-                msg._cluster_type = ClusterType.entry
                 targets[mmsi] = TargetVessel(
                     ts = tpos.timestamp if tpos is not None else None,
                     mmsi=mmsi,
                     ship_type=self._get_ship_type(mmsi),
                     length=self._get_ship_length(mmsi),
-                    status=VesselStatus.sailing,
                     tracks=[[msg]]
                 )
             else:
