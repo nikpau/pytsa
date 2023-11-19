@@ -440,7 +440,7 @@ class SearchAgent:
             
             msg = AISMessage(
                 sender=MMSI,
-                timestamp=ts.to_pydatetime().timestamp(), # Convert to unix
+                timestamp=int(ts.timestamp()), # Convert to unix
                 lat=lat,lon=lon,
                 COG=cog,SOG=sog,
                 _utm=self._utm
@@ -610,7 +610,7 @@ class SearchAgent:
         is larger than the 95% quantile of the speed change distribution.
         """
         return (
-            msg_t1.SOG - msg_t0.SOG > SQUANTILES[95]
+            abs(msg_t1.SOG - msg_t0.SOG) > SQUANTILES[95]
         )
         
     def _heading_change_too_large(self,msg_t0: AISMessage, msg_t1: AISMessage) -> bool:
