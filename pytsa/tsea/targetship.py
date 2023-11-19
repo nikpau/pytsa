@@ -17,7 +17,6 @@ from matplotlib.gridspec import GridSpec
 from scipy.interpolate import InterpolatedUnivariateSpline, interp1d
 from ..structs import ShipType, AISMessage, MMSI
 from ..logger import logger
-from ..tread.tread import VesselStatus
 
 # Type aliases
 Latitude = float
@@ -199,7 +198,6 @@ class TargetVessel:
         tracks: List[List[AISMessage]],
         ship_type: ShipType = None,
         length: float = None,
-        status: VesselStatus = None
         ) -> None:
         
         self.ts = ts
