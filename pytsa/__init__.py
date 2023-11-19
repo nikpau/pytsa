@@ -1,5 +1,5 @@
 from .tsea.search_agent import SearchAgent, TimePosition, TargetVessel
-from .tsea.structs import LatLonBoundingBox, UTMBoundingBox, ShipType
+from .structs import LatLonBoundingBox, UTMBoundingBox, ShipType
 from .tsea.targetship import TrajectoryMatcher
 
 
