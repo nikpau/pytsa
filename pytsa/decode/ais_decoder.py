@@ -121,16 +121,9 @@ def decode_from_file(source: str,
                      save_to_file = True) -> None:  
     df  = pd.read_csv(source,sep=",",quotechar='"',
                       encoding="utf-8",index_col=False)
+    # There are no newline characters allowed in the csv
+    df = df.replace(r'\n','', regex=True)
     decoder, fields = _get_decoder(df)
-    if decoder.type == "dynamic":
-        # Drop messages with newline characters
-        # since they are not valid AIS messages
-        df = df.drop(df[df[Msg12318Columns.RAW_MESSAGE].str.contains(r"\n")].index)
-    else:
-        # Drop messages with newline characters
-        # since they are not valid AIS messages
-        df = df.drop(df[df[Msg5Columns.RAW_MESSAGE1].str.contains(r"\n")].index)
-        df = df.drop(df[df[Msg5Columns.RAW_MESSAGE2].str.contains(r"\n")].index)
     decoded = decoder(df)
     df["DECODE_START"] = "||"
     df = df.assign(**_extract_fields(decoded,fields))
