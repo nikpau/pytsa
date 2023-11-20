@@ -118,7 +118,8 @@ def _get_decoder(dataframe: pd.DataFrame) -> Tuple[Decoder,MSGSLOTS]:
 # as new columns in the existing file. 
 def decode_from_file(source: str,
                      dest: str,
-                     save_to_file = True) -> None:  
+                     save_to_file = True) -> None:
+    print(f"Decoding {source} to {dest}")
     df  = pd.read_csv(source,sep=",",quotechar='"',
                       encoding="utf-8",index_col=False)
     # There are no newline characters allowed in the csv
