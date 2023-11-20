@@ -96,13 +96,13 @@ def _get_decoder(dataframe: pd.DataFrame) -> Tuple[Decoder,MSGSLOTS]:
         Msg5Columns.RAW_MESSAGE2)):
         # Maybe type 5 
         if all(b in _STATIC_TYPES for b in types.unique()):
-            return StaticDecoder, MSG5SLOTS
+            return StaticDecoder(), MSG5SLOTS
         else: raise StructuralError(
                 "Assumed type-5-only dataframe, but found "
                 f"messages of types {types.unique()}"
         )
     elif all(b in _DYNAMIC_TYPES for b in types.unique()):
-        return DynamicDecoder, MSG12318SLOTS
+        return DynamicDecoder(), MSG12318SLOTS
     else: raise StructuralError(
             "Found not processable combination "
             "of message types. Need either type-5-only dataframe "
