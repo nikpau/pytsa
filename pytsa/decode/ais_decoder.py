@@ -143,6 +143,6 @@ def mpdecode(source: Path, dest: Path, njobs: int = 16) -> None:
     return
 
 if __name__ == "__main__":
-    SOURCE = Path(os.environ["MSG5DECODED"])
+    SOURCE = Path(os.environ["AISDECODED"])
     DEST = Path(os.environ["DECODEDDEST"])
     mpdecode(SOURCE,DEST,njobs=24)
