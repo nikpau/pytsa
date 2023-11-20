@@ -141,8 +141,8 @@ def mpdecode(source: Path, dest: Path, njobs: int = 16) -> None:
     # and remove them from the list of files to be processed
     # to avoid overwriting data.
     if dest.exists():
-        destfiles = list(dest.glob("*.csv"))
-        files = [f for f in files if f.name not in destfiles]
+        dnames = [f.name for f in list(dest.glob("*.csv"))]
+        files = [f for f in files if f.name not in dnames]
     
     
     with mp.Pool(processes=njobs) as pool:
