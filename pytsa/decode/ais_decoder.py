@@ -135,9 +135,14 @@ def mpdecode(source: Path, dest: Path, njobs: int = 16) -> None:
     """
     Decode AIS messages in parallel.
     """
-    files = list(source.rglob("*.csv")) 
+    files = list(source.glob("*.csv")) 
     with mp.Pool(processes=njobs) as pool:
         pool.starmap(decode_from_file, 
                      [(file, f"{dest.as_posix()}/{'/'.join(file.parts[len(source.parts):])}")
                       for file in files])
     return
+
+if __name__ == "__main__":
+    SOURCE = Path(os.environ["MSG5DECODED"])
+    DEST = Path(os.environ["DECODEDDEST"])
+    mpdecode(SOURCE,DEST,njobs=24)
