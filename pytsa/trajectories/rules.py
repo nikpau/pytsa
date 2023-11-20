@@ -6,7 +6,7 @@ import numpy as np
 from inspect import signature
 from functools import partial
 
-from ..tsea.structs import AISMessage
+from ..structs import AISMessage
 
 class Recipe:
     """
