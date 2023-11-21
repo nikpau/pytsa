@@ -30,6 +30,8 @@ class TrajectorySplitter:
     def __init__(self, data: Targets, recipe: Recipe) -> None:
         self.data = data
         self.recipe = recipe.cook()
+        self.rejected: Targets = {}
+        self.accepted: Targets = {}
     
     def split(self, njobs: int = 4) -> tuple[Targets,Targets]:
         """
@@ -89,10 +91,6 @@ class TrajectorySplitter:
         queried timestamp are returned.
         
         """
-        rejected: Targets = {}
-        accepted: Targets = {}
-
-
         nships = len(targets)
         _n = 0 # Number of trajectories before split
         for i, (_,target_ship) in enumerate(targets.items()):
@@ -100,11 +98,26 @@ class TrajectorySplitter:
             for track in target_ship.tracks:
                 _n += 1
                 if self.recipe(track):
-                    self._copy_track(target_ship,rejected,track)
+                    self.reject_track(target_ship,track)
                 else:
-                    self._copy_track(target_ship,accepted,track)
-        return accepted, rejected, _n
-                        
+                    self.accept_track(target_ship,track)
+        return self.accepted, self.rejected, _n
+    
+    def reject_track(self,
+                     vessel: TargetVessel,
+                     track: list[AISMessage]) -> None:
+        """
+        Reject a track.
+        """
+        self._copy_track(vessel,self.rejected,track)
+        
+    def accept_track(self,
+                     vessel: TargetVessel,
+                     track: list[AISMessage]) -> None:
+        """
+        Accept a track.
+        """
+        self._copy_track(vessel,self.accepted,track)        
     
     def _copy_track(self,
                     vessel: TargetVessel, 
