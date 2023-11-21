@@ -224,6 +224,8 @@ class SearchAgent:
                 all vessels whose track is within the time delta of the
                 queried timestamp are returned.
         """
+        assert self._is_initialized, \
+            "Search agent not initialized. Call `init()` first."
         assert interpolation in ["linear","spline","auto"], \
             "Interpolation method must be either 'linear', 'spline' or 'auto'"
         # Get neighbors
@@ -241,6 +243,8 @@ class SearchAgent:
         Returns a dictionary of all target ships in the
         frame of the search agent.
         """
+        assert self._is_initialized, \
+            "Search agent not initialized. Call `init()` first."
         return self._mp_construct_target_vessels(
             self.dynamic_msgs,njobs,skip_filter
         )
