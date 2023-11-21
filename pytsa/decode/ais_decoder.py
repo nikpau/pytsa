@@ -128,8 +128,12 @@ def decode_from_file(source: str,
     decoded = decoder(df)
     df["DECODE_START"] = "||"
     df = df.assign(**_extract_fields(decoded,fields))
-    return df.to_csv(dest) if save_to_file else df
-
+    if save_to_file:
+        df.to_csv(dest,index=False)
+        del df
+        return
+    else:
+        return df
 
 from pathlib import Path
 def mpdecode(source: Path, dest: Path, njobs: int = 16) -> None:
@@ -137,13 +141,28 @@ def mpdecode(source: Path, dest: Path, njobs: int = 16) -> None:
     Decode AIS messages in parallel.
     """
     files = list(source.glob("*.csv")) 
-    with mp.Pool(processes=njobs) as pool:
-        pool.starmap(decode_from_file, 
-                     [(file, f"{dest.as_posix()}/{'/'.join(file.parts[len(source.parts):])}")
-                      for file in files])
-    return
+    # Check if any files are in the destination folder
+    # and remove them from the list of files to be processed
+    # to avoid overwriting data.
+    if dest.exists():
+        dnames = [f.name for f in list(dest.glob("*.csv"))]
+        files = [f for f in files if f.name not in dnames]
+    
+    if njobs == 1:
+        for file in files:
+            decode_from_file(
+                file, 
+                f"{dest.as_posix()}/{'/'.join(file.parts[len(source.parts):])}"
+            )
+        return
+    else: 
+        with mp.Pool(processes=njobs) as pool:
+            pool.starmap(decode_from_file, 
+                        [(file, f"{dest.as_posix()}/{'/'.join(file.parts[len(source.parts):])}")
+                        for file in files])
+        return
 
 if __name__ == "__main__":
     SOURCE = Path(os.environ["AISSOURCE"])
     DEST = Path(os.environ["DECODEDDEST"])
-    mpdecode(SOURCE,DEST,njobs=16)
+    mpdecode(SOURCE,DEST,njobs=1)
