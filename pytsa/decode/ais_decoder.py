@@ -13,7 +13,7 @@ import pandas as pd
 import pyais as ais
 import pyais.messages as msg
 import multiprocessing as mp
-from .filedescriptor import (
+from filedescriptor import (
     BaseColumns, Msg12318Columns, Msg5Columns
 )
 
