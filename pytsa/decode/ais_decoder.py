@@ -53,13 +53,15 @@ class DynamicDecoder:
         raw = "!" + raw
         
         out = []
-        for val in raw.values.ravel():
+        to_drop = []
+        for idx,val in enumerate(raw.values.ravel()):
             try:
                 out.append(ais.decode(val))
             except Exception as e:
                 print(f"Error decoding {val}: {e}")
+                to_drop.append(idx)
         
-        return out
+        return out, to_drop
 
 class StaticDecoder:
     type = "static"
@@ -79,13 +81,15 @@ class StaticDecoder:
         raw1, raw2 = "!" + raw1, "!" + raw2
         
         out = []
-        for vals in zip(raw1.values.ravel(),raw2.values.ravel()):
+        to_drop = []
+        for idx, vals in enumerate(zip(raw1.values.ravel(),raw2.values.ravel())):
             try:
                 out.append(ais.decode(*vals))
             except Exception as e:
                 print(f"Error decoding {vals}: {e}")
+                to_drop.append(idx)
         
-        return out
+        return out, to_drop
 
 # Type alias
 Decoder = DynamicDecoder | StaticDecoder
@@ -142,7 +146,8 @@ def decode_from_file(source: str,
     df = df.replace(r'\n','', regex=True)
     df = df.dropna()
     decoder, fields = _get_decoder(df)
-    decoded = decoder(df)
+    decoded, to_drop = decoder(df)
+    df = df.drop(index=to_drop) # Drop messages that could not be decoded
     df["DECODE_START"] = "||"
     df = df.assign(**_extract_fields(decoded,fields))
     if save_to_file:
