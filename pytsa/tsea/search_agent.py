@@ -15,7 +15,7 @@ import utm
 from ..logger import Loader, logger
 from ..structs import (
     BoundingBox, Position, TimePosition ,UTMBoundingBox,
-    HQUANTILES, SQUANTILES
+    HQUANTILES, SQUANTILES, DQUANTILES
 )
 from ..decode.filedescriptor import (
     Msg12318Columns, Msg5Columns
@@ -537,8 +537,7 @@ class SearchAgent:
                 )
             else:
                 # Split track if change in speed or heading is too large
-                if self._speed_change_too_large(targets[mmsi].tracks[-1][-1],msg) or \
-                    self._heading_change_too_large(targets[mmsi].tracks[-1][-1],msg):
+                if self.is_split_point(targets[mmsi].tracks[-1][-1],msg):
                     targets[mmsi].tracks.append([])
                 v = targets[mmsi]
                 v.tracks[-1].append(msg)
@@ -566,6 +565,19 @@ class SearchAgent:
             return self._sp_construct_target_vessels(df,tpos,overlap)
         else:
             return self._mp_construct_target_vessels(df,njobs)
+        
+    def is_split_point(self,
+                       msg_t0: AISMessage,
+                       msg_t1: AISMessage) -> bool:
+        """
+        Pipeline function for checking whether a given
+        AIS Message pair is a valid split point.
+        """
+        return (
+            self._distance_too_large(msg_t0,msg_t1) or
+            self._speed_change_too_large(msg_t0,msg_t1) or
+            self._heading_change_too_large(msg_t0,msg_t1)
+        )
     
     def _filter_overlapping(self, targets: Targets, tpos: TimePosition) -> None:
         """
@@ -586,21 +598,15 @@ class SearchAgent:
                 if len(track) < 2:
                     tgt.tracks.remove(track)
 
-    def _gap_too_large(self, 
-                       tgap: int,
-                       dgap: int, 
-                       msg_t0: AISMessage, 
-                       msg_t1: AISMessage) -> bool:
+    def _distance_too_large(self,
+                            msg_t0: AISMessage, 
+                            msg_t1: AISMessage) -> bool:
         """
-        Return True if the time and spatial difference between two AIS Messages
-        is too large.
-        `tgap` is the maximum time gap in seconds.
-        `dgap` is the maximum distance gap in nautical miles.
+        Return True if the spatial difference between two AIS Messages
+        is larger than the 95% quantile of the distance distribution.
         """
-        return (
-            msg_t1.timestamp - msg_t0.timestamp > tgap or
-            haversine(msg_t0.lon,msg_t0.lat,msg_t1.lon,msg_t1.lat) > dgap
-                )
+        return haversine(msg_t0.lon,msg_t0.lat,msg_t1.lon,msg_t1.lat) > DQUANTILES[95]
+    
     def _speed_change_too_large(self,msg_t0: AISMessage, msg_t1: AISMessage) -> bool:
         """
         Return True if the change in speed between two AIS Messages

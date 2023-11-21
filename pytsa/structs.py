@@ -15,7 +15,7 @@ MMSI = int
 UNIX_TIMESTAMP = int
 
 # Empirical quantiles for the
-# change in heading between two 
+# change in heading [°] between two 
 # consecutive messages.
 # These values have been obtained
 # from the AIS data set.
@@ -26,7 +26,7 @@ HQUANTILES = {
 }
 
 # Empirical quantiles for the
-# change in speed between two
+# change in speed [kn] between two
 # consecutive messages.
 # These values have been obtained
 # from the AIS data set.
@@ -36,6 +36,16 @@ SQUANTILES = {
     90: 1.4
 }
     
+# Empirical quantiles for the
+# distance [mi] between two consecutive
+# messages.
+# These values have been obtained
+# from the AIS data set.
+DQUANTILES = {
+    99: 1.81,
+    95: 1.14,
+    90: 0.9
+}
 
 @dataclass
 class Position:
