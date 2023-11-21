@@ -124,6 +124,7 @@ def decode_from_file(source: str,
                       encoding="utf-8",index_col=False)
     # There are no newline characters allowed in the csv
     df = df.replace(r'\n','', regex=True)
+    df = df.dropna()
     decoder, fields = _get_decoder(df)
     decoded = decoder(df)
     df["DECODE_START"] = "||"
