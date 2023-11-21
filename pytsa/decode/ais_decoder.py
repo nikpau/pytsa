@@ -13,7 +13,7 @@ import pandas as pd
 import pyais as ais
 import pyais.messages as msg
 import multiprocessing as mp
-from filedescriptor import (
+from .filedescriptor import (
     BaseColumns, Msg12318Columns, Msg5Columns
 )
 
@@ -46,7 +46,8 @@ class DynamicDecoder:
         """
         messages = df[Msg12318Columns.RAW_MESSAGE]
         # Split at exclamation mark and take the last part
-        raw = messages.str.split("!",expand=True).iloc[:,-1:]
+        raw = messages.str.split("!",expand=True)
+        raw = raw.dropna(axis=1).iloc[:,-1] # Catch NaNs
         # Since we split on the exclamation mark we need to
         # re-add it at the front of the message
         raw = "!" + raw
@@ -152,7 +153,9 @@ def decode_from_file(source: str,
         return df
 
 from pathlib import Path
-def mpdecode(source: Path, dest: Path, njobs: int = 16) -> None:
+def mpdecode(source: Path, 
+             dest: Path, njobs: int = 16, 
+             overwrite: bool = False) -> None:
     """
     Decode AIS messages in parallel.
     """
@@ -160,9 +163,10 @@ def mpdecode(source: Path, dest: Path, njobs: int = 16) -> None:
     # Check if any files are in the destination folder
     # and remove them from the list of files to be processed
     # to avoid overwriting data.
-    if dest.exists():
-        dnames = [f.name for f in list(dest.glob("*.csv"))]
-        files = [f for f in files if f.name not in dnames]
+    if overwrite:
+        if dest.exists():
+            dnames = [f.name for f in list(dest.glob("*.csv"))]
+            files = [f for f in files if f.name not in dnames]
     
     if njobs == 1:
         for file in files:
@@ -181,4 +185,4 @@ def mpdecode(source: Path, dest: Path, njobs: int = 16) -> None:
 if __name__ == "__main__":
     SOURCE = Path(os.environ["AISSOURCE"])
     DEST = Path(os.environ["DECODEDDEST"])
-    mpdecode(SOURCE,DEST,njobs=1)
+    mpdecode(SOURCE,DEST,njobs=32)
