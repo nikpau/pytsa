@@ -50,7 +50,15 @@ class DynamicDecoder:
         # Since we split on the exclamation mark we need to
         # re-add it at the front of the message
         raw = "!" + raw
-        return [ais.decode(val) for val in raw.values.ravel()]
+        
+        out = []
+        for val in raw.values.ravel():
+            try:
+                out.append(ais.decode(val))
+            except Exception as e:
+                print(f"Error decoding {val}: {e}")
+        
+        return out
 
 class StaticDecoder:
     type = "static"
@@ -68,8 +76,15 @@ class StaticDecoder:
         raw1 = msg1.str.split("!",expand=True).iloc[:,-1:]
         raw2 = msg2.str.split("!",expand=True).iloc[:,-1:]
         raw1, raw2 = "!" + raw1, "!" + raw2
-        return [ais.decode(*vals) for vals in 
-                zip(raw1.values.ravel(),raw2.values.ravel())]
+        
+        out = []
+        for vals in zip(raw1.values.ravel(),raw2.values.ravel()):
+            try:
+                out.append(ais.decode(*vals))
+            except Exception as e:
+                print(f"Error decoding {vals}: {e}")
+        
+        return out
 
 # Type alias
 Decoder = DynamicDecoder | StaticDecoder
