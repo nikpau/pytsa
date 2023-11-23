@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
 
+from .. import utils
 from ..logger import Loader, logger
 from ..structs import (
     BoundingBox, TimePosition,
@@ -31,43 +32,6 @@ class FileLoadingError(Exception):
 MMSI = int
 Targets = dict[MMSI,TargetVessel]
 
-def m2nm(m: float) -> float:
-    """Convert meters to nautical miles"""
-    return m/1852
-
-def nm2m(nm: float) -> float:
-    """Convert nautical miles to meters"""
-    return nm*1852
-
-def haversine(lon1, lat1, lon2, lat2, miles = True):
-    """
-    Calculate the great circle distance in kilometers between two points 
-    on the earth (specified in decimal degrees)
-    """
-    # convert decimal degrees to radians 
-    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
-
-    # haversine formula 
-    dlon = lon2 - lon1 
-    dlat = lat2 - lat1 
-    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-    c = 2 * asin(sqrt(a)) 
-    r = 3956 if miles else 6371 # Radius of earth in kilometers or miles
-    return c * r
-
-def _heading_change(h1,h2):
-    """
-    calculate the change between two headings
-    such that the smallest angle is returned.
-    """
-
-    diff = abs(h1-h2)
-    if diff > 180:
-        diff = 360 - diff
-    if (h1 + diff) % 360 == h2:
-        return diff
-    else:
-        return -diff
 
 class SearchAgent:
     """
@@ -580,7 +544,7 @@ class SearchAgent:
         Return True if the spatial difference between two AIS Messages
         is larger than the 95% quantile of the distance distribution.
         """
-        return haversine(msg_t0.lon,msg_t0.lat,msg_t1.lon,msg_t1.lat) > DQUANTILES[95]
+        return utils.haversine(msg_t0.lon,msg_t0.lat,msg_t1.lon,msg_t1.lat) > DQUANTILES[95]
     
     def _speed_change_too_large(self,msg_t0: AISMessage, msg_t1: AISMessage) -> bool:
         """
@@ -597,7 +561,7 @@ class SearchAgent:
         is larger than the 95% quantile of the heading change distribution.
         """
         return not (
-            HQUANTILES[95][0] < _heading_change(msg_t0.COG,msg_t1.COG) < HQUANTILES[95][1]
+            HQUANTILES[95][0] < utils.heading_change(msg_t0.COG,msg_t1.COG) < HQUANTILES[95][1]
         )
     
     def _corrections(self, targets: Targets) -> Targets:
