@@ -10,11 +10,10 @@ import multiprocessing as mp
 import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
-import utm
 
 from ..logger import Loader, logger
 from ..structs import (
-    BoundingBox, Position, TimePosition ,UTMBoundingBox,
+    BoundingBox, TimePosition,
     HQUANTILES, SQUANTILES, DQUANTILES
 )
 from ..decode.filedescriptor import (
@@ -144,14 +143,6 @@ class SearchAgent:
         # all messages around the queried time,
         # for building and interpolating trajectories.
         self.time_delta = 30 # in minutes
-        
-        # UTM mode
-        if isinstance(frame,UTMBoundingBox):
-            self._utm = True
-            logger.info("UTM mode initialized")
-        else:
-            self._utm = False
-            logger.info("LatLon mode initialized")
 
         # List of cell-indicies of all 
         # currently buffered cells
@@ -185,15 +176,13 @@ class SearchAgent:
                 TargetShips shall be extracted from 
                 AIS records.
         """
-        tpos._is_utm = self._utm
         pos = tpos.position
         if not self._is_initialized:
             # Load AIS Messages for specific cell
             self.dynamic_msgs = self._load_dynamic_messages()
             self.static_msgs = self._load_static_messages()
             self._is_initialized = True
-            pos = f"{pos.lat:.3f}N, {pos.lon:.3f}E" if isinstance(tpos.position,Position)\
-                  else f"{pos.easting:.3f}mE, {pos.northing:.3f}mN"
+            pos = f"{pos.lat:.3f}N, {pos.lon:.3f}E"
             logger.info(
                 "Target Ship search agent initialized at "
                 f"{pos}"
@@ -206,8 +195,7 @@ class SearchAgent:
     def get_ships(self, 
                   tpos: TimePosition, 
                   search_radius: float = 20, # in nautical miles
-                  interpolation: str = "linear",
-                  return_rejected: bool = False) -> Targets:
+                  interpolation: str = "linear") -> Targets:
         """
         Returns a list of target ships
         present in the neighborhood of the given position. 
@@ -231,20 +219,18 @@ class SearchAgent:
         # Get neighbors
         neigbors = self._get_neighbors(tpos,search_radius)
         tgts = self.construct_target_vessels(neigbors,tpos,True,njobs=1)
-        if return_rejected:
-            tgts, rejected = self.split(tgts,tpos)
-            rejected = self._construct_splines(rejected,mode=interpolation)
         # Contruct Splines for all target ships
         tgts = self._construct_splines(tgts,mode=interpolation)
-        return tgts if not return_rejected else (tgts,rejected)
+        return tgts
     
     def get_all_ships(self,njobs: int = 4, skip_filter: bool = False) -> Targets:
         """
         Returns a dictionary of all target ships in the
         frame of the search agent.
         """
-        assert self._is_initialized, \
-            "Search agent not initialized. Call `init()` first."
+        if not self._is_initialized:
+            self.init(TimePosition(self.FRAME.center))
+        
         return self._mp_construct_target_vessels(
             self.dynamic_msgs,njobs,skip_filter
         )
@@ -315,22 +301,12 @@ class SearchAgent:
         """
         Build a kd-tree object from the `Lat` and `Lon` 
         columns of a pandas dataframe.
-
-        If the object was initialized with a UTMCellManager,
-        the data is converted to UTM before building the tree.
         """
         assert Msg12318Columns.LAT in data and Msg12318Columns.LON in data, \
             "Input dataframe has no `lat` or `lon` columns"
-        if isinstance(self.FRAME,UTMBoundingBox): 
-            eastings, northings, *_ = utm.from_latlon(
-                data[Msg12318Columns.LAT].values,
-                data[Msg12318Columns.LON].values
-                )
-            return cKDTree(np.column_stack((northings,eastings)))
-        else:
-            lat=data[Msg12318Columns.LAT].values
-            lon=data[Msg12318Columns.LON].values
-            return cKDTree(np.column_stack((lat,lon)))
+        lat=data[Msg12318Columns.LAT].values
+        lon=data[Msg12318Columns.LON].values
+        return cKDTree(np.column_stack((lat,lon)))
             
         
     def _get_ship_type(self, mmsi: int) -> int:
@@ -378,7 +354,6 @@ class SearchAgent:
                     neighbors shall be found        
 
         """
-        tpos._is_utm = self._utm
         filtered = self._time_filter(self.dynamic_msgs,tpos.timestamp,self.time_delta)
         # Check if filterd result is empty
         if filtered.empty:
@@ -390,8 +365,7 @@ class SearchAgent:
         # Longitude are not parallel. Therefore, 
         # this is a conservative estimate.
         if not search_radius == np.inf:
-            sr = (nm2m(search_radius) if self._utm 
-                            else search_radius/60) # Convert to degrees
+            sr =  search_radius/60 # Convert to degrees
         else:
             sr = np.inf
         d, indices = tree.query(
@@ -445,8 +419,7 @@ class SearchAgent:
                 sender=MMSI,
                 timestamp=int(ts.timestamp()), # Convert to unix
                 lat=lat,lon=lon,
-                COG=cog,SOG=sog,
-                _utm=self._utm
+                COG=cog,SOG=sog
             )
             if first:
                 tv.tracks[-1].append(msg)
@@ -454,8 +427,7 @@ class SearchAgent:
             else:
                 # Split track if change in speed or heading is too large
                 if not skip_filter:
-                    if self._speed_change_too_large(tv.tracks[-1][-1],msg) or \
-                        self._heading_change_too_large(tv.tracks[-1][-1],msg):
+                    if self.is_split_point(tv.tracks[-1][-1],msg):
                         tv.tracks.append([])
                 tv.tracks[-1].append(msg)
         
@@ -527,8 +499,7 @@ class SearchAgent:
                 sender=mmsi,
                 timestamp=ts.to_pydatetime().timestamp(), # Convert to unix
                 lat=lat,lon=lon,
-                COG=cog,SOG=sog,
-                _utm=self._utm
+                COG=cog,SOG=sog
             )
             
             if mmsi not in targets:

@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from collections import namedtuple
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 import ciso8601
 from typing import List, Union
 import numpy as np
-import utm
 
 Latitude  = float
 Longitude = float
@@ -57,17 +55,6 @@ class Position:
     
     def __hash__(self) -> int:
         return hash((self.lat,self.lon))
-    
-@dataclass
-class UTMPosition:
-    """
-    Position object
-    """
-    northing: float
-    easting: float
-    
-    def __hash__(self) -> int:
-        return hash((self.northing,self.easting))
 
 class NONAME_TYPE:
     pass
@@ -93,19 +80,14 @@ class AISMessage:
     SOG: float # Speed over ground [knots]
     ROT: float = None # Rate of turn [degrees/minute]
     dROT: float = None # Change of ROT [degrees/minute²]
-    _utm: bool = False
     
     # Fields for Trajectory Clustering ------------------
     _cluster_type: str = "" # ["EN","EX","PO"]
     _label_group: Union[int,None] = None
 
     def __post_init__(self) -> None:
-        self.easting, self.northing, self.zone_number, self.zone_letter = utm.from_latlon(
-            self.lat, self.lon
-        )
+
         self.as_array = np.array(
-            [self.northing,self.easting,self.COG,self.SOG]
-        ).reshape(1,-1) if self._utm else np.array(
             [self.lat,self.lon,self.COG,self.SOG]
         ).reshape(1,-1)
         self.ROT = self._rot_handler(self.ROT)
@@ -124,6 +106,8 @@ class AISMessage:
             return None
         else:
             return sign * (rot / 4.733)**2
+        
+
 class ShipType(Enum):
     """
     Dataclass to store the type of vessel
@@ -144,7 +128,7 @@ class ShipType(Enum):
     OTHER = range(90,100)
 
 @dataclass
-class LatLonBoundingBox:
+class BoundingBox:
     """
     Geographical frame 
     containing longitudinal 
@@ -169,115 +153,42 @@ class LatLonBoundingBox:
         
     def __str__(self) -> str:
         return self.name
+    
+    @property
+    def center(self) -> Position:
+        """
+        Return the center of the bounding box
+        """
+        return self._center()
+    
+    def _center(self) -> Position:
+        """
+        Return the center of the bounding box
+        """
+        return Position(
+            (self.LATMIN+self.LATMAX)/2,
+            (self.LONMIN+self.LONMAX)/2
+        )
 
     
-    def to_utm(self) -> UTMBoundingBox:
-        """
-        Convert bounding box to 
-        UTM coordinates
-        """
-        min_easting, min_northing, zn, zl = utm.from_latlon(
-            self.LATMIN, self.LONMIN
-        )
-        max_easting, max_northing, *_ = utm.from_latlon(
-            self.LATMAX, self.LONMAX
-        )
-        return UTMBoundingBox(
-            min_easting=min_easting,
-            max_easting=max_easting,
-            min_northing=min_northing,
-            max_northing=max_northing,
-            zone_number=zn,
-            zone_letter=zl,
-            name=self.name,
-            number=self.number
-        )
-
-@dataclass
-class UTMBoundingBox:
-    """
-    Bounding box using 
-    UTM coordinates
-    """
-    min_easting: float
-    max_easting: float
-    min_northing: float
-    max_northing: float
-    zone_number: int
-    zone_letter: str
-    name: str = NONAME
-    number: int = NOINDEX
-    
-    def __repr__(self) -> str:
-        return (
-            "<UTMBoundingBox("
-            f"min_easting={self.min_easting:.3f},"
-            f"max_easting={self.max_easting:.3f},"
-            f"min_northing={self.min_northing:.3f},"
-            f"max_northing={self.max_northing:.3f},"
-            f"zone_number={self.zone_number},"
-            f"zone_letter={self.zone_letter})>"
-        )
-        
-    def __str__(self) -> str:
-        return self.name
-
-    def to_latlon(self) -> LatLonBoundingBox:
-        """
-        Convert bounding box to 
-        latitude and longitude
-        """
-        latmin, lonmin = utm.to_latlon(
-            self.min_easting, self.min_northing,
-            self.zone_number, self.zone_letter
-        )
-        latmax, lonmax = utm.to_latlon(
-            self.max_easting, self.max_northing,
-            self.zone_number, self.zone_letter
-        )
-        return LatLonBoundingBox(
-            LATMIN=latmin,
-            LATMAX=latmax,
-            LONMIN=lonmin,
-            LONMAX=lonmax,
-            name=self.name
-        )
-# Bounding boxes ------------------------------------
-BoundingBox = Union[LatLonBoundingBox, UTMBoundingBox]
-
 class TimePosition:
     """
     Time and position object
     """
-    def __init__(
-            self,
-            timestamp: Union[datetime, str],
-            lat: Latitude = None,
-            lon: Longitude = None,
-            easting: float = None,
-            northing: float = None,
-            as_utm: bool = False
-            )-> None:
+    def __init__(self,
+                 timestamp: Union[datetime, str],
+                 lat: Latitude = None,
+                 lon: Longitude = None)-> None:
         
         self.timestamp = timestamp
         self.lat = lat
         self.lon= lon
-        self.easting = easting
-        self.northing = northing
 
         self.as_array: List[float] = field(default=list)
         self.timestamp = self._validate_timestamp()
         self.timestamp = self.timestamp.timestamp()
 
-        self._is_utm = as_utm
-        if self.easting is None or self.northing is None:
-            self.easting, self.northing, *_ = utm.from_latlon(
-                    self.lat, self.lon
-            )
-        if self._is_utm:
-            self.as_array = [self.timestamp,self.easting,self.northing]
-        else:
-            self.as_array = [self.timestamp,self.lat,self.lon]
+        self.as_array = [self.timestamp,self.lat,self.lon]
         
     def _validate_timestamp(self) -> datetime:
         if isinstance(self.timestamp,datetime):
@@ -294,7 +205,4 @@ class TimePosition:
         """Return position as 
         (lat,lon)-namedtuple or 
         (northing,easting)-namedtuple"""
-        if self._is_utm:
-            return UTMPosition(self.northing,self.easting)
-        else:
-            return Position(self.lat,self.lon)
+        return Position(self.lat,self.lon)
