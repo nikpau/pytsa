@@ -7,6 +7,7 @@ being analyzed with it.
 """
 import os
 from typing import Any, List, Tuple, Dict
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -157,12 +158,13 @@ def decode_from_file(source: str,
     else:
         return df
 
-from pathlib import Path
-def mpdecode(source: Path, 
-             dest: Path, njobs: int = 16, 
-             overwrite: bool = False) -> None:
+def decode(source: Path, 
+           dest: Path, njobs: int = 16, 
+           overwrite: bool = False) -> None:
     """
     Decode AIS messages in parallel.
+
+    overwrite: If True, overwrite existing files in the destination folder.
     """
     files = list(source.glob("*.csv")) 
     # Check if any files are in the destination folder
@@ -182,12 +184,14 @@ def mpdecode(source: Path,
         return
     else: 
         with mp.Pool(processes=njobs) as pool:
-            pool.starmap(decode_from_file, 
-                        [(file, f"{dest.as_posix()}/{'/'.join(file.parts[len(source.parts):])}")
-                        for file in files])
+            pool.starmap(
+                decode_from_file, 
+                [(file, f"{dest.as_posix()}/{'/'.join(file.parts[len(source.parts):])}")
+                        for file in files]
+            )
         return
 
 if __name__ == "__main__":
     SOURCE = Path(os.environ["AISSOURCE"])
     DEST = Path(os.environ["DECODEDDEST"])
-    mpdecode(SOURCE,DEST,njobs=32)
+    decode(SOURCE,DEST,njobs=32)

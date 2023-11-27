@@ -19,6 +19,9 @@ class BaseColumns:
     """
     TIMESTAMP: str = "timestamp"
     MESSAGE_ID: str = "message_id"
+    RAW_MESSAGE: str = "raw_message"
+    RAW_MESSAGE1: str = "raw_message1"
+    RAW_MESSAGE2: str = "raw_message2"
 
 @dataclass
 class Msg12318Columns(BaseColumns):
@@ -26,8 +29,6 @@ class Msg12318Columns(BaseColumns):
     Data columns for message 1,2,3 and 18
     source files.
     """
-    RAW_MESSAGE: str = "raw_message"
-    ORIGINATOR: str = "originator"
     MMSI: str = "MMSI"
     LAT: str = "lat"
     LON: str = "lon"
@@ -41,9 +42,6 @@ class Msg5Columns(BaseColumns):
     Data columns for message 5
     source files. 
     """
-    RAW_MESSAGE1: str = "raw_message1"
-    RAW_MESSAGE2: str = "raw_message2"
-    ORIGINATOR: str = "originator"
     MMSI: str = "MMSI"
     SHIPTYPE: str = "ship_type"
     SHIPNAME: str = "shipname"
