@@ -1,0 +1,1 @@
+from .ais_decoder import decode_from_file, decode
