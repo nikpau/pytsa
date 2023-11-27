@@ -2,6 +2,7 @@
 Utility functions for pytsa
 """
 import math
+import vincenty as _vincenty # store the original vincenty function
 
 def m2nm(m: float) -> float:
     """Convert meters to nautical miles"""
@@ -10,6 +11,15 @@ def m2nm(m: float) -> float:
 def nm2m(nm: float) -> float:
     """Convert nautical miles to meters"""
     return nm*1852
+
+def vincenty(lon1, lat1, lon2, lat2, miles = True) -> float:
+    """
+    Calculate the great circle distance in kilometers between two points 
+    on the earth (specified in decimal degrees)
+    """
+    p1 = (lat1,lon1)
+    p2 = (lat2,lon2)
+    return _vincenty.vincenty_inverse(p1,p2,miles=miles)
 
 def haversine(lon1, lat1, lon2, lat2, miles = True):
     """
@@ -29,6 +39,16 @@ def haversine(lon1, lat1, lon2, lat2, miles = True):
     c = 2 * math.asin(math.sqrt(a)) 
     r = 3956 if miles else 6371 # Radius of earth in kilometers or miles
     return c * r
+
+def greater_circle_distance(lon1, lat1, lon2, lat2, miles = True, method = "haversine"):
+    """
+    Calculate the great circle distance in kilometers between two points 
+    on the earth (specified in decimal degrees)
+    """
+    assert method in ["haversine", "vincenty"], "Invalid method: {}".format(method)
+    if method == "haversine":
+        return haversine(lon1, lat1, lon2, lat2, miles=miles)
+    return vincenty(lon1, lat1, lon2, lat2, miles=miles)
 
 def heading_change(h1,h2):
     """

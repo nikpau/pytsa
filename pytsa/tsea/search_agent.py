@@ -51,7 +51,8 @@ class SearchAgent:
         msg5file: Union[Path,List[Path]],
         max_tgt_ships: int = 200,
         preprocessor: Callable[[pd.DataFrame],pd.DataFrame] = lambda x: x,
-        decoded: bool = True
+        decoded: bool = True,
+        high_accuracy: bool = False
         ) -> None:
        
         """ 
@@ -72,6 +73,10 @@ class SearchAgent:
                 the input data is decoded on the fly. Please note
                 that this process is magnitudes slower than using
                 decoded data.
+        high_accuracy: boolean flag indicating whether Vincenty's
+                formula should be used for distance calculations.
+                If `high_accuracy` is False, the Haversine formula
+                is used. Defaults to False.
         """
 
         if not isinstance(msg12318file,list):
@@ -89,6 +94,8 @@ class SearchAgent:
 
         # Spatial bounding box of current AIS message space
         self.FRAME = frame
+        
+        self.high_accuracy = high_accuracy
         
         self.spatial_filter = (
             f"{Msg12318Columns.LON} > {frame.LONMIN} and "
@@ -543,7 +550,10 @@ class SearchAgent:
         Return True if the spatial difference between two AIS Messages
         is larger than the 95% quantile of the distance distribution.
         """
-        return utils.haversine(msg_t0.lon,msg_t0.lat,msg_t1.lon,msg_t1.lat) > DQUANTILES[95]
+        method = "vincenty" if self.high_accuracy else "haversine"
+        d = utils.greater_circle_distance(
+            msg_t0.lon,msg_t0.lat,msg_t1.lon,msg_t1.lat,method=method)
+        return d > DQUANTILES[95]
     
     def _speed_change_too_large(self,msg_t0: AISMessage, msg_t1: AISMessage) -> bool:
         """
