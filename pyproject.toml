@@ -17,6 +17,7 @@ geopandas = "^0.10.2"
 pandas = "^1.3.4"
 scipy = "^1.7.1"
 utm  = "^0.7.0"
+vincenty = "^0.1.4"
 
 # [tool.poetry.scripts]
 # persist = "persist.__main__:main"
