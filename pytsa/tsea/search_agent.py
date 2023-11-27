@@ -21,7 +21,6 @@ from ..decode.filedescriptor import (
     Msg12318Columns, Msg5Columns
 )
 from ..decode.ais_decoder import decode_from_file
-#from ..tread.tread import VesselStatus, ClusterType
 from .targetship import TargetVessel, AISMessage, InterpolationError
 
 # Exceptions
