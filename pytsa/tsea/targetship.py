@@ -118,7 +118,7 @@ class TrackLinear:
         self.SOG = interp1d(
             timestamps, [msg.SOG for msg in self.track]
         )
-class TargetVessel:
+class TargetShip:
     """
     Central object for the pytsa package. It holds
     a collection of functions for working with the 
@@ -406,8 +406,8 @@ class TrajectoryMatcher:
 
     def __init__(
             self, 
-            vessel1: TargetVessel, 
-            vessel2: TargetVessel,
+            vessel1: TargetShip, 
+            vessel2: TargetShip,
             threshold: float = 20 # [min] Minimun overlap between trajectories
             ) -> None:
         self.vessel1 = vessel1

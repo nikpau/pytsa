@@ -23,7 +23,7 @@ class BaseColumns(Enum):
     RAW_MESSAGE1: str = "raw_message1"
     RAW_MESSAGE2: str = "raw_message2"
 
-class Msg12318Columns(BaseColumns):
+class Msg12318Columns(Enum):
     """
     Data columns for message 1,2,3 and 18
     source files.
@@ -35,7 +35,7 @@ class Msg12318Columns(BaseColumns):
     COURSE: str = "course"
     TURN: str = "turn"
 
-class Msg5Columns(BaseColumns):
+class Msg5Columns(Enum):
     """
     Data columns for message 5
     source files. 

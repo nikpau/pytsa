@@ -11,7 +11,7 @@ from copy import deepcopy
 
 from ..logger import logger
 from ..tsea.search_agent import Targets
-from ..tsea.targetship import TargetVessel, AISMessage
+from ..tsea.targetship import TargetShip, AISMessage
 from .rules import Recipe
 
 class TrajectorySplitter:
@@ -104,7 +104,7 @@ class TrajectorySplitter:
         return self.accepted, self.rejected, _n
     
     def reject_track(self,
-                     vessel: TargetVessel,
+                     vessel: TargetShip,
                      track: list[AISMessage]) -> None:
         """
         Reject a track.
@@ -112,7 +112,7 @@ class TrajectorySplitter:
         self._copy_track(vessel,self.rejected,track)
         
     def accept_track(self,
-                     vessel: TargetVessel,
+                     vessel: TargetShip,
                      track: list[AISMessage]) -> None:
         """
         Accept a track.
@@ -120,7 +120,7 @@ class TrajectorySplitter:
         self._copy_track(vessel,self.accepted,track)        
     
     def _copy_track(self,
-                    vessel: TargetVessel, 
+                    vessel: TargetShip, 
                     target: Targets,
                     track: list[AISMessage]) -> None:
         """

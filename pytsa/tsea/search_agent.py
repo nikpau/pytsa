@@ -18,10 +18,10 @@ from ..structs import (
     HQUANTILES, SQUANTILES, DQUANTILES, UNIX_TIMESTAMP
 )
 from ..decode.filedescriptor import (
-    Msg12318Columns, Msg5Columns
+    BaseColumns, Msg12318Columns, Msg5Columns
 )
 from ..decode.ais_decoder import decode_from_file
-from .targetship import TargetVessel, AISMessage, InterpolationError
+from .targetship import TargetShip, AISMessage, InterpolationError
 
 # Exceptions
 class FileLoadingError(Exception):
@@ -29,7 +29,7 @@ class FileLoadingError(Exception):
 
 # Type aliases
 MMSI = int
-Targets = dict[MMSI,TargetVessel]
+Targets = dict[MMSI,TargetShip]
 
 
 class SearchAgent:
@@ -254,11 +254,11 @@ class SearchAgent:
                     msg12318 = pd.read_csv(file,sep=",")
                     self._n_original += len(msg12318)
                     msg12318 = self.preprocessor(msg12318) # Apply custom filter
-                    msg12318[Msg12318Columns.TIMESTAMP.value] = pd.to_datetime(
-                        msg12318[Msg12318Columns.TIMESTAMP.value])
+                    msg12318[BaseColumns.TIMESTAMP.value] = pd.to_datetime(
+                        msg12318[BaseColumns.TIMESTAMP.value])
                     msg12318 = msg12318.drop_duplicates(
                         subset=[
-                            Msg12318Columns.TIMESTAMP.value,
+                            BaseColumns.TIMESTAMP.value,
                             Msg12318Columns.MMSI.value
                         ], keep="first"
                     )
@@ -376,7 +376,7 @@ class SearchAgent:
             "Input dataframe must only contain messages from a single MMSI"
         MMSI = int(MMSI)
         # Initialize TargetVessel object
-        tv =  TargetVessel(
+        tv =  TargetShip(
             ts = None,
             mmsi=MMSI,
             ship_type=self._get_ship_type(MMSI),
@@ -385,10 +385,10 @@ class SearchAgent:
         )
         first = True
             
-        df = df.sort_values(by=Msg12318Columns.TIMESTAMP.value)
+        df = df.sort_values(by=BaseColumns.TIMESTAMP.value)
         
         for ts,lat,lon,sog,cog in zip(
-            df[Msg12318Columns.TIMESTAMP.value], df[Msg12318Columns.LAT.value],  
+            df[BaseColumns.TIMESTAMP.value], df[Msg12318Columns.LAT.value],  
             df[Msg12318Columns.LON.value],       df[Msg12318Columns.SPEED.value],
             df[Msg12318Columns.COURSE.value]):
             ts: pd.Timestamp # make type hinting happy
@@ -463,11 +463,11 @@ class SearchAgent:
         the track of the target ship is split into two tracks.
         
         """
-        df = df.sort_values(by=Msg12318Columns.TIMESTAMP.value)
+        df = df.sort_values(by=BaseColumns.TIMESTAMP.value)
         targets: Targets = {}
         
         for mmsi,ts,lat,lon,sog,cog in zip(
-            df[Msg12318Columns.MMSI.value], df[Msg12318Columns.TIMESTAMP.value],
+            df[Msg12318Columns.MMSI.value], df[BaseColumns.TIMESTAMP.value],
             df[Msg12318Columns.LAT.value],  df[Msg12318Columns.LON.value],
             df[Msg12318Columns.SPEED.value],df[Msg12318Columns.COURSE.value]):
             ts: pd.Timestamp # make type hinting happy
@@ -480,7 +480,7 @@ class SearchAgent:
             )
             
             if mmsi not in targets:
-                targets[mmsi] = TargetVessel(
+                targets[mmsi] = TargetShip(
                     ts = tpos.timestamp if tpos is not None else None,
                     mmsi=mmsi,
                     ship_type=self._get_ship_type(mmsi),
@@ -670,13 +670,13 @@ class SearchAgent:
         rows whose `Timestamp` is not more than 
         `delta` minutes apart from imput `date`.
         """
-        assert Msg12318Columns.TIMESTAMP.value in df, "No `timestamp` column found"
-        timezone = df[Msg12318Columns.TIMESTAMP.value].iloc[0].tz.zone # Get timezone
+        assert BaseColumns.TIMESTAMP.value in df, "No `timestamp` column found"
+        timezone = df[BaseColumns.TIMESTAMP.value].iloc[0].tz.zone # Get timezone
         date = pd.to_datetime(int(date),unit="s").tz_localize(timezone)
         dt = pd.Timedelta(delta, unit="minutes")
         mask = (
-            (df[Msg12318Columns.TIMESTAMP.value] > (date-dt)) & 
-            (df[Msg12318Columns.TIMESTAMP.value] < (date+dt))
+            (df[BaseColumns.TIMESTAMP.value] > (date-dt)) & 
+            (df[BaseColumns.TIMESTAMP.value] < (date+dt))
         )
         return df.loc[mask]
     
