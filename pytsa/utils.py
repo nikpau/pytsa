@@ -12,6 +12,14 @@ def nm2m(nm: float) -> float:
     """Convert nautical miles to meters"""
     return nm*1852
 
+def s2h(s: float) -> float:
+    """Convert seconds to hours"""
+    return s/3600
+
+def mi2nm(mi: float) -> float:
+    """Convert miles to nautical miles"""
+    return mi/1.151
+
 def vincenty(lon1, lat1, lon2, lat2, miles = True) -> float:
     """
     Calculate the great circle distance in kilometers between two points 

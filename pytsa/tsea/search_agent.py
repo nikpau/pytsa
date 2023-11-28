@@ -4,19 +4,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, List, Union
 from more_itertools import pairwise
-from math import radians, cos, sin, asin, sqrt
 import multiprocessing as mp
 
 import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
 
-from .. import utils
 from ..logger import Loader, logger
 from ..structs import (
     BoundingBox, TimePosition,
-    HQUANTILES, SQUANTILES, DQUANTILES, UNIX_TIMESTAMP
+    UNIX_TIMESTAMP
 )
+from . import split
 from ..decode.filedescriptor import (
     BaseColumns, Msg12318Columns, Msg5Columns
 )
@@ -405,7 +404,7 @@ class SearchAgent:
             else:
                 # Split track if change in speed or heading is too large
                 if not skip_filter:
-                    if self.is_split_point(tv.tracks[-1][-1],msg):
+                    if split.is_split_point(tv.tracks[-1][-1],msg):
                         tv.tracks.append([])
                 tv.tracks[-1].append(msg)
         
@@ -489,7 +488,7 @@ class SearchAgent:
                 )
             else:
                 # Split track if change in speed or heading is too large
-                if self.is_split_point(targets[mmsi].tracks[-1][-1],msg):
+                if split.is_split_point(targets[mmsi].tracks[-1][-1],msg):
                     targets[mmsi].tracks.append([])
                 v = targets[mmsi]
                 v.tracks[-1].append(msg)
@@ -518,18 +517,6 @@ class SearchAgent:
         else:
             return self._mp_construct_target_vessels(df,njobs)
         
-    def is_split_point(self,
-                       msg_t0: AISMessage,
-                       msg_t1: AISMessage) -> bool:
-        """
-        Pipeline function for checking whether a given
-        AIS Message pair is a valid split point.
-        """
-        return (
-            self._distance_too_large(msg_t0,msg_t1) or
-            self._speed_change_too_large(msg_t0,msg_t1) or
-            self._heading_change_too_large(msg_t0,msg_t1)
-        )
     
     def _filter_overlapping(self, 
                             targets: Targets, 
@@ -545,7 +532,6 @@ class SearchAgent:
                     to_keep.append(track)
             tgt.tracks = to_keep
 
-
     def _remove_single_obs(self, targets: Targets) -> Targets:
         """
         Remove tracks that only have a single observation.
@@ -556,38 +542,6 @@ class SearchAgent:
                 if len(track) >= 2:
                     to_keep.append(track)
             tgt.tracks = to_keep
-
-    def _distance_too_large(self,
-                            msg_t0: AISMessage, 
-                            msg_t1: AISMessage) -> bool:
-        """
-        Return True if the spatial difference between two AIS Messages
-        is larger than the 95% quantile of the distance distribution.
-        """
-        method = "vincenty" if self.high_accuracy else "haversine"
-        d = utils.greater_circle_distance(
-            msg_t0.lon,msg_t0.lat,msg_t1.lon,msg_t1.lat,method=method)
-        return d > DQUANTILES[95]
-    
-    def _speed_change_too_large(self,msg_t0: AISMessage, msg_t1: AISMessage) -> bool:
-        """
-        Return True if the change in speed between two AIS Messages
-        is larger than the 95% quantile of the speed change distribution.
-        """
-        return (
-            abs(msg_t1.SOG - msg_t0.SOG) > SQUANTILES[95]
-        )
-        
-    def _heading_change_too_large(self,
-                                  msg_t0: AISMessage, 
-                                  msg_t1: AISMessage) -> bool:
-        """
-        Return True if the change in heading between two AIS Messages
-        is larger than the 95% quantile of the heading change distribution.
-        """
-        return not (
-            HQUANTILES[95][0] < utils.heading_change(msg_t0.COG,msg_t1.COG) < HQUANTILES[95][1]
-        )
     
     def _corrections(self, targets: Targets) -> Targets:
         """
