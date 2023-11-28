@@ -67,23 +67,11 @@ class TrackSplines:
         self.lon = InterpolatedUnivariateSpline(
             timestamps, [msg.lon for msg in self.track]
         )
-        self.northing = InterpolatedUnivariateSpline(
-            timestamps, [msg.northing for msg in self.track]
-        )
-        self.easting = InterpolatedUnivariateSpline(
-            timestamps, [msg.easting for msg in self.track]
-        )
         self.COG = InterpolatedUnivariateSpline(
             timestamps, [msg.COG for msg in self.track]
         )
         self.SOG = InterpolatedUnivariateSpline(
             timestamps, [msg.SOG for msg in self.track]
-        )
-        self.ROT = InterpolatedUnivariateSpline(
-            timestamps, [msg.ROT for msg in self.track]
-        )
-        self.dROT = InterpolatedUnivariateSpline(
-            timestamps, [msg.dROT for msg in self.track]
         )
 
 class TrackLinear:
@@ -114,16 +102,6 @@ class TrackLinear:
         self.SOG = interp1d(
             timestamps, [msg.SOG for msg in self.track]
         )
-        self.ROT = interp1d(
-            timestamps, [msg.ROT for msg in self.track]
-        )
-        # Derivative of ROT is not available in linear interpolation
-        # as there are too few points to perform numerical differentiation.
-        # Instead, we set it to zero.
-        self.dROT = interp1d(
-            timestamps, [0.0 for _ in self.track]
-        )
-        
 class TargetVessel:
     """
     Central object for the pytsa package. It holds
