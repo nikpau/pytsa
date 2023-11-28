@@ -15,7 +15,7 @@ from .. import utils
 from ..logger import Loader, logger
 from ..structs import (
     BoundingBox, TimePosition,
-    HQUANTILES, SQUANTILES, DQUANTILES
+    HQUANTILES, SQUANTILES, DQUANTILES, UNIX_TIMESTAMP
 )
 from ..decode.filedescriptor import (
     Msg12318Columns, Msg5Columns
@@ -44,16 +44,14 @@ class SearchAgent:
     search will be commenced.
     """
     
-    def __init__(
-        self, 
-        msg12318file: Union[Path,List[Path]],
-        frame: BoundingBox,
-        msg5file: Union[Path,List[Path]],
-        max_tgt_ships: int = 200,
-        preprocessor: Callable[[pd.DataFrame],pd.DataFrame] = lambda x: x,
-        decoded: bool = True,
-        high_accuracy: bool = False
-        ) -> None:
+    def __init__(self, 
+                 msg12318file: Union[Path,List[Path]],
+                 frame: BoundingBox,
+                 msg5file: Union[Path,List[Path]],
+                 max_tgt_ships: int = 200,
+                 preprocessor: Callable[[pd.DataFrame],pd.DataFrame] = lambda x: x,
+                 decoded: bool = True,
+                 high_accuracy: bool = False) -> None:
        
         """ 
         frame: BoundingBox object setting the search space
@@ -193,7 +191,9 @@ class SearchAgent:
         tgts = self._construct_splines(tgts,mode=interpolation)
         return tgts
     
-    def get_all_ships(self,njobs: int = 4, skip_filter: bool = False) -> Targets:
+    def get_all_ships(self,
+                      njobs: int = 4, 
+                      skip_filter: bool = False) -> Targets:
         """
         Returns a dictionary of all target ships in the
         frame of the search agent.
@@ -279,7 +279,8 @@ class SearchAgent:
         return cKDTree(np.column_stack((lat,lon)))
             
         
-    def _get_ship_type(self, mmsi: int) -> int:
+    def _get_ship_type(self, 
+                       mmsi: int) -> int:
         """
         Return the ship type of a given MMSI number.
 
@@ -314,7 +315,9 @@ class SearchAgent:
             return max(sl)
         return sl
 
-    def _get_neighbors(self, tpos: TimePosition, search_radius: float = 20) -> pd.DataFrame:
+    def _get_neighbors(self, 
+                       tpos: TimePosition, 
+                       search_radius: float = 20) -> pd.DataFrame:
         """
         Return all AIS messages that are no more than
         `self.search_radius` [nm] away from the given position.
@@ -324,7 +327,9 @@ class SearchAgent:
                     neighbors shall be found        
 
         """
-        filtered = self._time_filter(self.dynamic_msgs,tpos.timestamp,self.time_delta)
+        filtered = self._time_filter(
+            self.dynamic_msgs,tpos.timestamp,self.time_delta
+        )
         # Check if filterd result is empty
         if filtered.empty:
             logger.warning("No AIS messages found in time-filtered cell.")
@@ -339,7 +344,7 @@ class SearchAgent:
         else:
             sr = np.inf
         d, indices = tree.query(
-            list(tpos.position),
+            tpos.position.as_list,
             k=self.max_tgt_ships,
             distance_upper_bound=sr
         )
@@ -430,11 +435,10 @@ class SearchAgent:
         
         return targets
 
-    def _sp_construct_target_vessels(
-            self, 
-            df: pd.DataFrame, 
-            tpos: TimePosition,
-            overlap: bool) -> Targets:
+    def _sp_construct_target_vessels(self, 
+                                     df: pd.DataFrame, 
+                                     tpos: TimePosition,
+                                     overlap: bool) -> Targets:
         """
         Single-process version of `_construct_target_vessels`.
         
@@ -524,7 +528,9 @@ class SearchAgent:
             self._heading_change_too_large(msg_t0,msg_t1)
         )
     
-    def _filter_overlapping(self, targets: Targets, tpos: TimePosition) -> None:
+    def _filter_overlapping(self, 
+                            targets: Targets, 
+                            tpos: TimePosition) -> None:
         """
         Remove target ships whose track does not overlap
         with the queried timestamp.
@@ -564,7 +570,9 @@ class SearchAgent:
             abs(msg_t1.SOG - msg_t0.SOG) > SQUANTILES[95]
         )
         
-    def _heading_change_too_large(self,msg_t0: AISMessage, msg_t1: AISMessage) -> bool:
+    def _heading_change_too_large(self,
+                                  msg_t0: AISMessage, 
+                                  msg_t1: AISMessage) -> bool:
         """
         Return True if the change in heading between two AIS Messages
         is larger than the 95% quantile of the heading change distribution.
@@ -636,21 +644,26 @@ class SearchAgent:
                     msg_t1.lat = latt1
 
     
-    def _overlaps_search_date(self, track: list[AISMessage], tpos: TimePosition) -> bool:
+    def _overlaps_search_date(self, 
+                              track: list[AISMessage], 
+                              tpos: TimePosition) -> bool:
         """
         Return True if the track of the given vessel
         overlaps with the queried timestamp.
         """
         return (track[0].timestamp < tpos.timestamp < track[-1].timestamp)
 
-    def _time_filter(self, df: pd.DataFrame, date: datetime, delta: int) -> pd.DataFrame:
+    def _time_filter(self, 
+                     df: pd.DataFrame, 
+                     date: UNIX_TIMESTAMP, 
+                     delta: int) -> pd.DataFrame:
         """
         Filter a pandas dataframe to only return 
         rows whose `Timestamp` is not more than 
         `delta` minutes apart from imput `date`.
         """
         assert Msg12318Columns.TIMESTAMP in df, "No `timestamp` column found"
-        date = pd.Timestamp(date, tz=None)
+        date = pd.to_datetime(int(date),unit="s")
         dt = pd.Timedelta(delta, unit="minutes")
         mask = (
             (df[Msg12318Columns.TIMESTAMP] > (date-dt)) & 
