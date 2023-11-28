@@ -96,10 +96,10 @@ class SearchAgent:
         self.high_accuracy = high_accuracy
         
         self.spatial_filter = (
-            f"{Msg12318Columns.LON} > {frame.LONMIN} and "
-            f"{Msg12318Columns.LON} < {frame.LONMAX} and "
-            f"{Msg12318Columns.LAT} > {frame.LATMIN} and "
-            f"{Msg12318Columns.LAT} < {frame.LATMAX}"
+            f"{Msg12318Columns.LON.value} > {frame.LONMIN} and "
+            f"{Msg12318Columns.LON.value} < {frame.LONMAX} and "
+            f"{Msg12318Columns.LAT.value} > {frame.LATMIN} and "
+            f"{Msg12318Columns.LAT.value} < {frame.LATMAX}"
         )
 
         # Maximum number of target ships to extract
@@ -230,15 +230,15 @@ class SearchAgent:
             msg5 = pd.read_csv(
                 file,usecols=
                 [
-                    Msg5Columns.MMSI,
-                    Msg5Columns.SHIPTYPE,
-                    Msg5Columns.TO_BOW,
-                    Msg5Columns.TO_STERN
+                    Msg5Columns.MMSI.value,
+                    Msg5Columns.SHIPTYPE.value,
+                    Msg5Columns.TO_BOW.value,
+                    Msg5Columns.TO_STERN.value
                 ]
             )
             snippets.append(msg5)
         msg5 = pd.concat(snippets)
-        msg5 = msg5[msg5[Msg5Columns.MMSI].isin(self.dynamic_msgs[Msg12318Columns.MMSI])]
+        msg5 = msg5[msg5[Msg5Columns.MMSI.value].isin(self.dynamic_msgs[Msg12318Columns.MMSI.value])]
         return decode_from_file(msg5,None,False) if not self.decoded else msg5
 
     def _load_dynamic_messages(self) -> pd.DataFrame:
@@ -254,10 +254,13 @@ class SearchAgent:
                     msg12318 = pd.read_csv(file,sep=",")
                     self._n_original += len(msg12318)
                     msg12318 = self.preprocessor(msg12318) # Apply custom filter
-                    msg12318[Msg12318Columns.TIMESTAMP] = pd.to_datetime(
-                        msg12318[Msg12318Columns.TIMESTAMP])#.dt.tz_localize("utc")
+                    msg12318[Msg12318Columns.TIMESTAMP.value] = pd.to_datetime(
+                        msg12318[Msg12318Columns.TIMESTAMP.value])
                     msg12318 = msg12318.drop_duplicates(
-                        subset=[Msg12318Columns.TIMESTAMP,Msg12318Columns.MMSI], keep="first"
+                        subset=[
+                            Msg12318Columns.TIMESTAMP.value,
+                            Msg12318Columns.MMSI.value
+                        ], keep="first"
                     )
                     self._n_filtered += len(msg12318)
                     snippets.append(msg12318.query(self.spatial_filter))
@@ -272,10 +275,10 @@ class SearchAgent:
         Build a kd-tree object from the `Lat` and `Lon` 
         columns of a pandas dataframe.
         """
-        assert Msg12318Columns.LAT in data and Msg12318Columns.LON in data, \
+        assert Msg12318Columns.LAT.value in data and Msg12318Columns.LON.value in data, \
             "Input dataframe has no `lat` or `lon` columns"
-        lat=data[Msg12318Columns.LAT].values
-        lon=data[Msg12318Columns.LON].values
+        lat=data[Msg12318Columns.LAT.value].values
+        lon=data[Msg12318Columns.LON.value].values
         return cKDTree(np.column_stack((lat,lon)))
             
         
@@ -287,8 +290,8 @@ class SearchAgent:
         If more than one ship type is found, the first
         one is returned and a warning is logged.
         """
-        st = self.static_msgs[self.static_msgs[Msg5Columns.MMSI] == mmsi]\
-            [Msg5Columns.SHIPTYPE].values
+        st = self.static_msgs[self.static_msgs[Msg5Columns.MMSI.value] == mmsi]\
+            [Msg5Columns.SHIPTYPE.value].values
         st:np.ndarray = np.unique(st)
         if st.size > 1:
             logger.warning(
@@ -304,8 +307,8 @@ class SearchAgent:
         If more than one ship length is found, the largest
         one is returned and a warning is logged.
         """
-        raw = self.static_msgs[self.static_msgs[Msg5Columns.MMSI] == mmsi]\
-            [[Msg5Columns.TO_BOW,Msg5Columns.TO_STERN]].values
+        raw = self.static_msgs[self.static_msgs[Msg5Columns.MMSI.value] == mmsi]\
+            [[Msg5Columns.TO_BOW.value,Msg5Columns.TO_STERN.value]].values
         sl:np.ndarray = np.sum(raw,axis=1)
         sl = np.unique(sl)
         if sl.size > 1:
@@ -359,8 +362,8 @@ class SearchAgent:
         dataframes, each containing only messages
         from a single MMSI.
         """
-        mmsis = df[Msg12318Columns.MMSI].unique()
-        return [df[df[Msg12318Columns.MMSI] == mmsi] for mmsi in mmsis]
+        mmsis = df[Msg12318Columns.MMSI.value].unique()
+        return [df[df[Msg12318Columns.MMSI.value] == mmsi] for mmsi in mmsis]
     
     def _impl_construct_target_vessel(self, 
                                       df: pd.DataFrame, 
@@ -368,7 +371,7 @@ class SearchAgent:
         """
         Construct a single TargetVessel object from a given dataframe.
         """
-        MMSI = df[Msg12318Columns.MMSI].unique()
+        MMSI = df[Msg12318Columns.MMSI.value].unique()
         assert len(MMSI) == 1, \
             "Input dataframe must only contain messages from a single MMSI"
         MMSI = int(MMSI)
@@ -382,12 +385,12 @@ class SearchAgent:
         )
         first = True
             
-        df = df.sort_values(by=Msg12318Columns.TIMESTAMP)
+        df = df.sort_values(by=Msg12318Columns.TIMESTAMP.value)
         
         for ts,lat,lon,sog,cog in zip(
-            df[Msg12318Columns.TIMESTAMP], df[Msg12318Columns.LAT],  
-            df[Msg12318Columns.LON],       df[Msg12318Columns.SPEED],
-            df[Msg12318Columns.COURSE]):
+            df[Msg12318Columns.TIMESTAMP.value], df[Msg12318Columns.LAT.value],  
+            df[Msg12318Columns.LON.value],       df[Msg12318Columns.SPEED.value],
+            df[Msg12318Columns.COURSE.value]):
             ts: pd.Timestamp # make type hinting happy
             
             msg = AISMessage(
@@ -460,13 +463,13 @@ class SearchAgent:
         the track of the target ship is split into two tracks.
         
         """
-        df = df.sort_values(by=Msg12318Columns.TIMESTAMP)
+        df = df.sort_values(by=Msg12318Columns.TIMESTAMP.value)
         targets: Targets = {}
         
         for mmsi,ts,lat,lon,sog,cog in zip(
-            df[Msg12318Columns.MMSI], df[Msg12318Columns.TIMESTAMP],
-            df[Msg12318Columns.LAT],  df[Msg12318Columns.LON],
-            df[Msg12318Columns.SPEED],df[Msg12318Columns.COURSE]):
+            df[Msg12318Columns.MMSI.value], df[Msg12318Columns.TIMESTAMP.value],
+            df[Msg12318Columns.LAT.value],  df[Msg12318Columns.LON.value],
+            df[Msg12318Columns.SPEED.value],df[Msg12318Columns.COURSE.value]):
             ts: pd.Timestamp # make type hinting happy
             
             msg = AISMessage(
@@ -667,13 +670,13 @@ class SearchAgent:
         rows whose `Timestamp` is not more than 
         `delta` minutes apart from imput `date`.
         """
-        assert Msg12318Columns.TIMESTAMP in df, "No `timestamp` column found"
-        timezone = df[Msg12318Columns.TIMESTAMP].iloc[0].tz.zone # Get timezone
+        assert Msg12318Columns.TIMESTAMP.value in df, "No `timestamp` column found"
+        timezone = df[Msg12318Columns.TIMESTAMP.value].iloc[0].tz.zone # Get timezone
         date = pd.to_datetime(int(date),unit="s").tz_localize(timezone)
         dt = pd.Timedelta(delta, unit="minutes")
         mask = (
-            (df[Msg12318Columns.TIMESTAMP] > (date-dt)) & 
-            (df[Msg12318Columns.TIMESTAMP] < (date+dt))
+            (df[Msg12318Columns.TIMESTAMP.value] > (date-dt)) & 
+            (df[Msg12318Columns.TIMESTAMP.value] < (date+dt))
         )
         return df.loc[mask]
     
