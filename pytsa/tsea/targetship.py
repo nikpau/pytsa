@@ -189,6 +189,10 @@ class TargetVessel:
         """
         assert mode in ["linear","spline","auto"],\
             "Mode must be either 'linear', 'spline' or 'auto'."
+        if not self.tracks:
+            raise InterpolationError(
+                f"Empty track for vessel {self.mmsi}."
+            )
         self.interpolation = []
         for track in self.tracks:
             try:
@@ -253,8 +257,8 @@ class TargetVessel:
         # Returns a 1x4 array:
         # [northing, easting, COG, SOG]
         return np.array([
-            self.interpolation[i].northing(ts),
-            self.interpolation[i].easting(ts),
+            self.interpolation[i].lat(ts),
+            self.interpolation[i].lon(ts),
             # Take the modulo 360 to ensure that the
             # course over ground is in the interval [0,360]
             self.interpolation[i].COG(ts) % 360,
@@ -318,8 +322,8 @@ class TargetVessel:
             # Returns a Nx4 array:
             # [northing, easting, COG, SOG, timestamp]
             preds: np.ndarray = np.array([
-                self.interpolation[i].northing(timestamps),
-                self.interpolation[i].easting(timestamps),
+                self.interpolation[i].lat(timestamps),
+                self.interpolation[i].lon(timestamps),
                 # Take the modulo 360 of the COG to get the
                 # heading to be between 0 and 360 degrees
                 self.interpolation[i].COG(timestamps) % 360,
@@ -343,8 +347,8 @@ class TargetVessel:
             # Returns a Nx4 array:
             # [northing, easting, COG, SOG, timestamp]
             preds: np.ndarray = np.array([
-                interp_.northing(timestamps),
-                interp_.easting(timestamps),
+                interp_.lat(timestamps),
+                interp_.lon(timestamps),
                 # Take the modulo 360 of the COG to get the
                 # heading to be between 0 and 360 degrees
                 interp_.COG(timestamps) % 360,
