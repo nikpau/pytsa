@@ -174,7 +174,7 @@ class SearchAgent:
                 neighbors shall be found
         
         search_radius: Radius around agent in which taget vessel 
-                search is rolled out
+                search is rolled out [nm]
 
         overlap_tpos: boolean flag indicating whether
                 we only want to return vessels, whose track overlaps
