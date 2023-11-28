@@ -255,7 +255,7 @@ class SearchAgent:
                     self._n_original += len(msg12318)
                     msg12318 = self.preprocessor(msg12318) # Apply custom filter
                     msg12318[Msg12318Columns.TIMESTAMP] = pd.to_datetime(
-                        msg12318[Msg12318Columns.TIMESTAMP]).dt.tz_localize(None)
+                        msg12318[Msg12318Columns.TIMESTAMP])#.dt.tz_localize("utc")
                     msg12318 = msg12318.drop_duplicates(
                         subset=[Msg12318Columns.TIMESTAMP,Msg12318Columns.MMSI], keep="first"
                     )
@@ -536,9 +536,12 @@ class SearchAgent:
         with the queried timestamp.
         """
         for tgt in targets.values():
+            to_keep = []
             for track in tgt.tracks:
-                if not self._overlaps_search_date(track,tpos):
-                    tgt.tracks.remove(track)
+                if self._overlaps_search_date(track,tpos):
+                    to_keep.append(track)
+            tgt.tracks = to_keep
+
 
     def _remove_single_obs(self, targets: Targets) -> Targets:
         """
@@ -663,7 +666,8 @@ class SearchAgent:
         `delta` minutes apart from imput `date`.
         """
         assert Msg12318Columns.TIMESTAMP in df, "No `timestamp` column found"
-        date = pd.to_datetime(int(date),unit="s")
+        timezone = df[Msg12318Columns.TIMESTAMP].iloc[0].tz.zone # Get timezone
+        date = pd.to_datetime(int(date),unit="s").tz_localize(timezone)
         dt = pd.Timedelta(delta, unit="minutes")
         mask = (
             (df[Msg12318Columns.TIMESTAMP] > (date-dt)) & 
