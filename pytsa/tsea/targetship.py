@@ -67,8 +67,15 @@ class TrackSplines:
         self.lon = InterpolatedUnivariateSpline(
             timestamps, [msg.lon for msg in self.track]
         )
+        # Add the 360° complement to correctly interpolate
+        # course changes from 360° to 0°
+        complement360 = np.rad2deg(
+            np.unwrap(
+                np.deg2rad([msg.COG for msg in self.track])
+            )
+        )
         self.COG = InterpolatedUnivariateSpline(
-            timestamps, [msg.COG for msg in self.track]
+            timestamps, complement360
         )
         self.SOG = InterpolatedUnivariateSpline(
             timestamps, [msg.SOG for msg in self.track]
@@ -94,10 +101,19 @@ class TrackLinear:
             timestamps, [msg.lat for msg in self.track]
         )
         self.lon = interp1d(
-            timestamps, [msg.lon for msg in self.track]
+            timestamps, [msg.lon for msg in self.track],
+            
+        )
+        # Add the 360° complement to correctly interpolate
+        # course changes from 360° to 0°
+        complement360 = np.rad2deg(
+            np.unwrap(
+                np.deg2rad([msg.COG for msg in self.track])
+            )
         )
         self.COG = interp1d(
-            timestamps, [msg.COG for msg in self.track]
+            timestamps, complement360,
+            bounds_error=False, fill_value=None
         )
         self.SOG = interp1d(
             timestamps, [msg.SOG for msg in self.track]
