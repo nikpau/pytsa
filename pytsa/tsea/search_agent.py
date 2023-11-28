@@ -548,9 +548,11 @@ class SearchAgent:
         Remove tracks that only have a single observation.
         """
         for tgt in targets.values():
+            to_keep = []
             for track in tgt.tracks:
-                if len(track) < 2:
-                    tgt.tracks.remove(track)
+                if len(track) >= 2:
+                    to_keep.append(track)
+            tgt.tracks = to_keep
 
     def _distance_too_large(self,
                             msg_t0: AISMessage, 
