@@ -12,38 +12,6 @@ Longitude = float
 MMSI = int
 UNIX_TIMESTAMP = int
 
-# Empirical quantiles for the
-# change in heading [°] between two 
-# consecutive messages.
-# These values have been obtained
-# from the AIS data set.
-HQUANTILES = {
-    99: [-174.1,163.1],
-    95: [-109.3,56.8],
-    90: [-44.9,25.1]
-}
-
-# Empirical quantiles for the
-# change in speed [kn] between two
-# consecutive messages.
-# These values have been obtained
-# from the AIS data set.
-SQUANTILES = {
-    99: 7.4,
-    95: 2.7,
-    90: 1.4
-}
-    
-# Empirical quantiles for the
-# distance [mi] between two consecutive
-# messages.
-# These values have been obtained
-# from the AIS data set.
-DQUANTILES = {
-    99: 1.81,
-    95: 1.14,
-    90: 0.9
-}
 
 @dataclass
 class Position:
