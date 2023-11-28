@@ -108,12 +108,6 @@ class TrackLinear:
         self.lon = interp1d(
             timestamps, [msg.lon for msg in self.track]
         )
-        self.northing = interp1d(
-            timestamps, [msg.northing for msg in self.track]
-        )
-        self.easting = interp1d(
-            timestamps, [msg.easting for msg in self.track]
-        )
         self.COG = interp1d(
             timestamps, [msg.COG for msg in self.track]
         )
@@ -229,6 +223,10 @@ class TargetVessel:
                 elif mode == "spline":
                     self.interpolation.append(TrackSplines(track))
             except Exception as e:
+                logger.error(
+                    f"Could not interpolate track "
+                    f"of vessel {self.mmsi}: {e}."
+                )
                 self.tracks.remove(track)
         if not self.interpolation: 
             raise InterpolationError(
