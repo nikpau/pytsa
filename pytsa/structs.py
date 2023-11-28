@@ -55,6 +55,10 @@ class Position:
     
     def __hash__(self) -> int:
         return hash((self.lat,self.lon))
+    
+    @property
+    def as_list(self) -> List[float]:
+        return [self.lat,self.lon]
 
 class NONAME_TYPE:
     pass
