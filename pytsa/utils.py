@@ -2,7 +2,7 @@
 Utility functions for pytsa
 """
 import math
-import vincenty as _vincenty # store the original vincenty function
+import vincenty as _vincenty
 
 def m2nm(m: float) -> float:
     """Convert meters to nautical miles"""
