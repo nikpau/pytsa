@@ -85,7 +85,7 @@ class Inspector:
         nships = len(targets)
         _n = 0 # Number of trajectories before split
         for i, (_,target_ship) in enumerate(targets.items()):
-            logger.info(f"Filtering target ship {i+1}/{nships}")
+            logger.info(f"Inspecting target ship {i+1}/{nships}")
             for track in target_ship.tracks:
                 _n += 1
                 if self.recipe(track):
