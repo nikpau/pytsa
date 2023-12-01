@@ -15,7 +15,7 @@ import pyais as ais
 import pyais.messages as msg
 import multiprocessing as mp
 from pytsa.decode.filedescriptor import (
-    BaseColumns, Msg12318Columns, Msg5Columns
+    BaseColumns
 )
 
 class StructuralError(Exception):
@@ -45,7 +45,7 @@ class DynamicDecoder:
         Decode AIS messages of types 1,2,3,18 
         supplied as a pandas Series object.
         """
-        messages = df[Msg12318Columns.RAW_MESSAGE.value]
+        messages = df[BaseColumns.RAW_MESSAGE.value]
         # Split at exclamation mark and take the last part
         raw = messages.str.split("!",expand=True)
         raw = raw.dropna(axis=1).iloc[:,-1] # Catch NaNs
@@ -75,8 +75,8 @@ class StaticDecoder:
         Decode AIS messages of type 5 
         supplied as a pandas DataFrame.
         """
-        msg1 = df[Msg5Columns.RAW_MESSAGE1.value]
-        msg2 = df[Msg5Columns.RAW_MESSAGE2.value]
+        msg1 = df[BaseColumns.RAW_MESSAGE1.value]
+        msg2 = df[BaseColumns.RAW_MESSAGE2.value]
         raw1 = msg1.str.split("!",expand=True).iloc[:,-1:]
         raw2 = msg2.str.split("!",expand=True).iloc[:,-1:]
         raw1, raw2 = "!" + raw1, "!" + raw2
@@ -113,8 +113,8 @@ def _get_decoder(dataframe: pd.DataFrame) -> Tuple[Decoder,MSGSLOTS]:
     (type 5) but not both.
     """
     types = dataframe[BaseColumns.MESSAGE_ID.value]
-    if all(k in dataframe for k in (Msg5Columns.RAW_MESSAGE1.value, 
-        Msg5Columns.RAW_MESSAGE2.value)):
+    if all(k in dataframe for k in (BaseColumns.RAW_MESSAGE1.value, 
+        BaseColumns.RAW_MESSAGE2.value)):
         # Maybe type 5 
         if all(b in _STATIC_TYPES for b in types.unique()):
             return StaticDecoder(), MSG5SLOTS
