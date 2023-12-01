@@ -197,7 +197,6 @@ def decode(source: Path,
         return
 
 if __name__ == "__main__":
-    # SOURCE = Path(os.environ["AISSOURCE"])
-    # DEST = Path(os.environ["DECODEDDEST"])
-    # decode(SOURCE,DEST,njobs=32)
-    decode(Path("."),Path("."),njobs=1)
+    SOURCE = Path(os.environ["AISSOURCE"])
+    DEST = Path(os.environ["DECODEDDEST"])
+    decode(SOURCE,DEST,njobs=32)
