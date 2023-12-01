@@ -145,7 +145,12 @@ def decode_from_file(source: str,
                       encoding="utf-8",index_col=False)
     # There are no newline characters allowed in the csv
     df = df.replace(r'\n','', regex=True)
-    df = df.dropna()
+    
+    dropnasubset = [BaseColumns.RAW_MESSAGE1.value,
+                    BaseColumns.RAW_MESSAGE2.value] if \
+                    BaseColumns.RAW_MESSAGE1.value in df.columns else \
+                    [BaseColumns.RAW_MESSAGE.value]
+    df = df.dropna(subset=dropnasubset)
     decoder, fields = _get_decoder(df)
     decoded, to_drop = decoder(df)
     df = df.drop(index=to_drop) # Drop messages that could not be decoded
@@ -192,6 +197,7 @@ def decode(source: Path,
         return
 
 if __name__ == "__main__":
-    SOURCE = Path(os.environ["AISSOURCE"])
-    DEST = Path(os.environ["DECODEDDEST"])
-    decode(SOURCE,DEST,njobs=32)
+    # SOURCE = Path(os.environ["AISSOURCE"])
+    # DEST = Path(os.environ["DECODEDDEST"])
+    # decode(SOURCE,DEST,njobs=32)
+    decode(Path("."),Path("."),njobs=1)
