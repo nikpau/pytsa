@@ -9,6 +9,7 @@ import os
 from typing import Any, List, Tuple, Dict
 from pathlib import Path
 
+from enum import Enum
 import numpy as np
 import pandas as pd
 import pyais as ais
@@ -97,9 +98,21 @@ Decoder = DynamicDecoder | StaticDecoder
 
 def _extract_fields(messages: List[ais.ANY_MESSAGE],
                     fields: tuple) -> Dict[str,np.ndarray]:
+    """
+    Get the values of the fields in the messages
+    """
     out = np.empty((len(messages),len(fields)),dtype=object)
     for i, msg in enumerate(messages):
-        out[i] = [getattr(msg,field,_NA) for field in fields]
+        line = []
+        for field in fields:
+            attr = getattr(msg,field,_NA)
+            # The pyais library uses the enum module
+            # to define some of the fields. We need to
+            # unpack them to get the actual value.
+            if isinstance(attr,Enum): # unpack enum
+                attr = attr.value
+            line.append(attr)
+        out[i] = line
     return dict(zip(fields,out.T))
 
 def _get_decoder(dataframe: pd.DataFrame) -> Tuple[Decoder,MSGSLOTS]:
