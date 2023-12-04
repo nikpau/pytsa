@@ -10,23 +10,9 @@ import numpy as np
 Latitude  = float
 Longitude = float
 MMSI = int
-UNIX_TIMESTAMP = int
+UNIX_TIMESTAMP = int | float
 
 
-@dataclass
-class Position:
-    """
-    Position object
-    """
-    lat: Latitude
-    lon: Longitude
-    
-    def __hash__(self) -> int:
-        return hash((self.lat,self.lon))
-    
-    @property
-    def as_list(self) -> List[float]:
-        return [self.lat,self.lon]
 
 class NONAME_TYPE:
     pass
@@ -133,6 +119,13 @@ class BoundingBox:
         """
         return self._center()
     
+    @property
+    def aspect_ratio(self) -> float:
+        """
+        Return the aspect ratio of the bounding box
+        """
+        return self._aspect_ratio()
+    
     def _center(self) -> Position:
         """
         Return the center of the bounding box
@@ -142,19 +135,50 @@ class BoundingBox:
             (self.LONMIN+self.LONMAX)/2
         )
 
-    
-class TimePosition:
+    def _aspect_ratio(self) -> float:
+        """
+        Return the aspect ratio of the bounding box
+        """
+        return (self.LONMAX-self.LONMIN)/(self.LATMAX-self.LATMIN)
+
+@dataclass
+class Position:
     """
-    Time and position object
+    Position object for a geographical point.
+    """
+    lat: Latitude
+    lon: Longitude
+    
+    def __hash__(self) -> int:
+        return hash((self.lat,self.lon))
+    
+    @property
+    def as_list(self) -> List[float]:
+        return [self.lat,self.lon]
+    
+class TimePosition(Position):
+    """
+    Position object with a timestamp.
+    
+    Parameters
+    ----------
+    timestamp : Union[datetime, str, UNIX_TIMESTAMP]
+        Timestamp of the observation. Must be either
+        a datetime object, a string in ISO 8601 format
+        or a UNIX timestamp.
+    lat : Latitude
+        Latitude of the observation.
+    lon : Longitude
+        Longitude of the observation.
     """
     def __init__(self,
-                 timestamp: Union[datetime, str],
+                 timestamp: Union[datetime, str, UNIX_TIMESTAMP],
                  lat: Latitude = None,
                  lon: Longitude = None)-> None:
         
         self.timestamp = timestamp
         self.lat = lat
-        self.lon= lon
+        self.lon = lon
 
         self.as_array: List[float] = field(default=list)
         self.timestamp = self._validate_timestamp()
@@ -168,9 +192,13 @@ class TimePosition:
         try:
             return ciso8601.parse_datetime(self.timestamp)
         except ValueError:
-            raise ValueError(
-                f"Provided date '{self.timestamp}' is not ISO 8601 compliant."
-            )
+            try: # Try to parse as UNIX timestamp
+                return datetime.fromtimestamp(self.timestamp)
+            except:
+                raise ValueError(
+                    f"Provided date '{self.timestamp}' is neither "
+                    "ISO 8601 compliant nor a UNIX timestamp."
+                )
     
     @property
     def position(self) -> Position:
