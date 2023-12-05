@@ -282,7 +282,7 @@ class SearchAgent:
             
         
     def _get_ship_type(self, 
-                       mmsi: int) -> int:
+                       mmsi: int) -> list[int]:
         """
         Return the ship type of a given MMSI number.
 
@@ -295,8 +295,7 @@ class SearchAgent:
         if st.size > 1:
             logger.warning(
                 f"More than one ship type found for MMSI {mmsi}. "
-                f"Found {st}. Returning {st[0]}.")
-            return st[0]
+                f"Found {st}.")
         return st
 
     def _get_ship_length(self, mmsi: int) -> int:
