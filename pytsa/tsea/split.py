@@ -1,63 +1,115 @@
 """
 Auxiliary functions for determining trajectory splitting points.
 """
+import numpy as np
+import pickle
+
 from ..structs import AISMessage
 from .. import utils
+from ..quantile_data import __path__ as _DATA_DIR
 
+# Load empirical quantiles
+# from pickle file. The quantiles
+# are numpy arrays with shape (1001,) to
+# allow for quantiles from 0% up to 99.9%
+# in 0.1% steps.
+DATA_DIR = _DATA_DIR[0]
+with open(f"{DATA_DIR}/dquants.pkl","rb") as f:
+    _DQUANTILES = pickle.load(f)
+with open(f"{DATA_DIR}/hquants.pkl","rb") as f:
+    _HQUANTILES = pickle.load(f)
+with open(f"{DATA_DIR}/squants.pkl","rb") as f:
+    _SQUANTILES = pickle.load(f)
+with open(f"{DATA_DIR}/diffquants.pkl","rb") as f:
+    _RMCSQUANTILES = pickle.load(f)
+with open(f"{DATA_DIR}/tquants.pkl","rb") as f:
+    _TQUANTILES = pickle.load(f)
+    
+# Convert quantiles to dictionaries
+# with the quantile as key and the
+# quantile value as value. 
+# ==================================
+_QVALUES = np.linspace(0,100,1001)
 # Empirical quantiles for the
 # change in heading [°] between two 
 # consecutive messages.
-# These values have been obtained
-# from one day of the AIS data set.
-HQUANTILES = {
-    99: [-174.1,163.1],
-    95: [-109.3,56.8],
-    90: [-44.9,25.1]
-}
+HQUANTILES = {_QVALUES[k]: _HQUANTILES[k] for k in range(1001)}
 
 # Empirical quantiles for the
 # change in speed [kn] between two
 # consecutive messages.
-# These values have been obtained
-# from one day of the AIS data set.
-SQUANTILES = {
-    99: 7.4,
-    95: 2.7,
-    90: 1.4
-}
-    
+SQUANTILES = {_QVALUES[k]: _SQUANTILES[k] for k in range(1001)}
+
 # Empirical quantiles for the
 # distance [mi] between two consecutive
-# messages.
-# These values have been obtained
-# from one day of the AIS data set.
-DQUANTILES = {
-    99: 1.81,
-    95: 1.14,
-    90: 0.9
-}
+# messages. NOTE: NOT USED in original paper.
+DQUANTILES = {_QVALUES[k]: _DQUANTILES[k] for k in range(101)}
+
 # Empirical quantiles for the
 # difference between the reported
 # speed [kn] and the speed calculated
 # from the spatial difference and time difference.
-# These values have been obtained
-# from one day of the AIS data set.
-RMCSQUANTILES = {
-    99: [-25.83,14.20],
-    95: [-3.61,7.52],
-    90: [-1.47,3.97]
-}
+RMCSQUANTILES = {_QVALUES[k]: _RMCSQUANTILES[k] for k in range(1001)}
 
 # Empirical quantiles for the
 # time difference [s] between two
 # consecutive messages.
-# These values have been obtained
-# from one day of the AIS data set.
-TQUANTILES = {
-    99: 1936.55,
-    55: 392.00,
-    90: 361.00
-}
+TQUANTILES = {_QVALUES[k]: _TQUANTILES[k] for k in range(1001)}
+
+# # Empirical quantiles for the
+# # change in heading [°] between two 
+# # consecutive messages.
+# # These values have been obtained
+# # from one year of the AIS data set.
+# HQUANTILES = {
+#     99: [-174.1,163.1],
+#     95: [-109.3,56.8],
+#     90: [-44.9,25.1]
+# }
+
+# # Empirical quantiles for the
+# # change in speed [kn] between two
+# # consecutive messages.
+# # These values have been obtained
+# # from one year of the AIS data set.
+# SQUANTILES = {
+#     99: 7.4,
+#     95: 2.7,
+#     90: 1.4
+# }
+    
+# # Empirical quantiles for the
+# # distance [mi] between two consecutive
+# # messages.
+# # These values have been obtained
+# # from one year of the AIS data set.
+# DQUANTILES = {
+#     99: 1.81,
+#     95: 1.14,
+#     90: 0.9
+# }
+# # Empirical quantiles for the
+# # difference between the reported
+# # speed [kn] and the speed calculated
+# # from the spatial difference and time difference.
+# # These values have been obtained
+# # from one year of the AIS data set.
+# RMCSQUANTILES = {
+#     99: [-25.83,14.20],
+#     95: [-3.61,7.52],
+#     90: [-1.47,3.97]
+# }
+
+# # Empirical quantiles for the
+# # time difference [s] between two
+# # consecutive messages.
+# # These values have been obtained
+# # from one day of the AIS data set.
+# TQUANTILES = {
+#     99: 1936.55,
+#     55: 392.00,
+#     90: 361.00
+# }
 
 def speed_change_too_large(msg_t0: AISMessage, 
                            msg_t1: AISMessage) -> bool:
@@ -76,7 +128,7 @@ def heading_change_too_large(msg_t0: AISMessage,
     is larger than the 95% quantile of the heading change distribution.
     """
     return not (
-        HQUANTILES[95][0] < utils.heading_change(msg_t0.COG,msg_t1.COG) < HQUANTILES[95][1]
+        HQUANTILES[2.5] < utils.heading_change(msg_t0.COG,msg_t1.COG) < HQUANTILES[97.5]
     )
 
 def distance_too_large(msg_t0: AISMessage, 
@@ -108,6 +160,24 @@ def avg_speed(msg_t0: AISMessage,
     """
     return (msg_t0.SOG + msg_t1.SOG) / 2
 
+def cosine_of_angle_between(msg_t0: AISMessage,
+                            msg_t1: AISMessage,
+                            msg_t2: AISMessage) -> float:
+    """
+    Return the cosine of the angle between the track
+    of three AIS Messages.
+    """
+    p1 = (msg_t0.lon,msg_t0.lat)
+    p2 = (msg_t1.lon,msg_t1.lat)
+    p3 = (msg_t2.lon,msg_t2.lat)
+    
+    v1 = np.array(p1) - np.array(p2)
+    v2 = np.array(p3) - np.array(p2)
+    
+    nom = np.dot(v1,v2)
+    den = np.linalg.norm(v1) * np.linalg.norm(v2)
+    return nom / den
+
 def deviation_from_reported_too_large(msg_t0: AISMessage,
                                       msg_t1: AISMessage) -> bool:
         """
@@ -119,7 +189,7 @@ def deviation_from_reported_too_large(msg_t0: AISMessage,
         msgs = (msg_t0,msg_t1)
         diff = avg_speed(*msgs) - speed_from_position(*msgs)
         return not (
-            RMCSQUANTILES[99][0] < diff < RMCSQUANTILES[99][1]
+            RMCSQUANTILES[0.5] < diff < RMCSQUANTILES[99.5]
         )
         
 def time_difference_too_large(msg_t0: AISMessage,
@@ -129,7 +199,7 @@ def time_difference_too_large(msg_t0: AISMessage,
         is larger than the 95% quantile of the time difference distribution.
         """
         return not (
-            TQUANTILES[99] > (msg_t1.timestamp - msg_t0.timestamp)
+            TQUANTILES[99.0] > (msg_t1.timestamp - msg_t0.timestamp)
         )
 
 def is_split_point(msg_t0: AISMessage,
