@@ -30,6 +30,9 @@ class FileLoadingError(Exception):
 MMSI = int
 Targets = dict[MMSI,TargetShip]
 
+def _identity(x):
+    return x
+
 
 class SearchAgent:
     """
@@ -48,7 +51,7 @@ class SearchAgent:
                  frame: BoundingBox,
                  msg5file: Union[Path,List[Path]],
                  max_tgt_ships: int = 200,
-                 preprocessor: Callable[[pd.DataFrame],pd.DataFrame] = lambda x: x,
+                 preprocessor: Callable[[pd.DataFrame],pd.DataFrame] = _identity,
                  decoded: bool = True,
                  high_accuracy: bool = False) -> None:
        
