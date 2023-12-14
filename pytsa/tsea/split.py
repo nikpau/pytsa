@@ -56,61 +56,6 @@ RMCSQUANTILES = {_QVALUES[k]: _RMCSQUANTILES[k] for k in range(1001)}
 # consecutive messages.
 TQUANTILES = {_QVALUES[k]: _TQUANTILES[k] for k in range(1001)}
 
-# # Empirical quantiles for the
-# # change in heading [°] between two 
-# # consecutive messages.
-# # These values have been obtained
-# # from one year of the AIS data set.
-# HQUANTILES = {
-#     99: [-174.1,163.1],
-#     95: [-109.3,56.8],
-#     90: [-44.9,25.1]
-# }
-
-# # Empirical quantiles for the
-# # change in speed [kn] between two
-# # consecutive messages.
-# # These values have been obtained
-# # from one year of the AIS data set.
-# SQUANTILES = {
-#     99: 7.4,
-#     95: 2.7,
-#     90: 1.4
-# }
-    
-# # Empirical quantiles for the
-# # distance [mi] between two consecutive
-# # messages.
-# # These values have been obtained
-# # from one year of the AIS data set.
-# DQUANTILES = {
-#     99: 1.81,
-#     95: 1.14,
-#     90: 0.9
-# }
-# # Empirical quantiles for the
-# # difference between the reported
-# # speed [kn] and the speed calculated
-# # from the spatial difference and time difference.
-# # These values have been obtained
-# # from one year of the AIS data set.
-# RMCSQUANTILES = {
-#     99: [-25.83,14.20],
-#     95: [-3.61,7.52],
-#     90: [-1.47,3.97]
-# }
-
-# # Empirical quantiles for the
-# # time difference [s] between two
-# # consecutive messages.
-# # These values have been obtained
-# # from one day of the AIS data set.
-# TQUANTILES = {
-#     99: 1936.55,
-#     55: 392.00,
-#     90: 361.00
-# }
-
 def speed_change_too_large(msg_t0: AISMessage, 
                            msg_t1: AISMessage) -> bool:
     """
