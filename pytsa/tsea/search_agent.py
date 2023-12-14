@@ -253,7 +253,17 @@ class SearchAgent:
         try:
             with Loader(self.FRAME):
                 for file in self.msg12318files:
-                    msg12318 = pd.read_csv(file,sep=",")
+                    msg12318 = pd.read_csv(
+                        file,sep=",",
+                        usecols=[
+                            BaseColumns.TIMESTAMP.value,
+                            Msg12318Columns.MMSI.value,
+                            Msg12318Columns.LAT.value,
+                            Msg12318Columns.LON.value,
+                            Msg12318Columns.SPEED.value,
+                            Msg12318Columns.COURSE.value
+                        ]
+                    )
                     self._n_original += len(msg12318)
                     msg12318 = self.preprocessor(msg12318) # Apply custom filter
                     msg12318[BaseColumns.TIMESTAMP.value] = pd.to_datetime(
