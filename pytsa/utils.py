@@ -2,7 +2,9 @@
 Utility functions for pytsa
 """
 import math
+from pathlib import Path
 import vincenty as _vincenty
+import ciso8601
 
 def m2nm(m: float) -> float:
     """Convert meters to nautical miles"""
@@ -71,3 +73,62 @@ def heading_change(h1,h2):
         return diff
     else:
         return -diff
+
+def _date_transformer(datefile: Path) -> float:
+    """
+    Transform a date string to a float.
+
+    Parameters
+    ----------
+    date : str
+        The date string to transform.
+
+    Returns
+    -------
+    float
+        The date as a float.
+    """
+    return ciso8601.parse_datetime(datefile.stem.replace("_", "-"))
+
+def align_data_files(dyn: list[Path], stat: list[Path]) -> bool:
+    """
+    Align dynamic and static data files by sorting them
+    according to their date, and removing all files that
+    are not present in both lists.
+
+    This function assumes that the dynamic and static data files
+    are named according to the following convention:
+    - dynamic data files: YYYY_MM_DD.csv
+    - static data files: YYYY_MM_DD.csv
+    
+    In case your input data files are not named according to this
+    convention, you are advised to either rename them accordingly
+    or adapt the `_date_transformer` function, which is used to
+    sort the files by date.
+    """
+    if len(dyn) != len(stat):
+
+        print(
+            "Number of dynamic and static messages do not match."
+            f"Dynamic: {len(dyn)}, static: {len(stat)}\n"
+            "Processing only common files."
+        )
+        # Find the difference
+        d = set([f.stem for f in dyn])
+        s = set([f.stem for f in stat])
+        
+        # Find all files that are in d and s
+        common = list(d.intersection(s))
+        
+        # Remove all files that are not in common
+        dyn = [f for f in dyn if f.stem in common]
+        stat = [f for f in stat if f.stem in common]
+        
+    # Sort the files by date
+    dyn = sorted(dyn, key=_date_transformer)
+    stat = sorted(stat, key=_date_transformer)
+
+    assert all([d.stem == s.stem for d,s in zip(dyn, stat)]),\
+        "Dynamic and static messages are not in the same order."
+
+    return True

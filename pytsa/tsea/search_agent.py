@@ -21,6 +21,7 @@ from ..decode.filedescriptor import (
 )
 from ..decode.ais_decoder import decode_from_file
 from .targetship import TargetShip, AISMessage, InterpolationError
+from ..utils import align_data_files
 
 # Exceptions
 class FileLoadingError(Exception):
@@ -88,9 +89,11 @@ class SearchAgent:
             self.msg5files = [msg5file]
         else:
             self.msg5files = msg5file
-            
-        assert len(self.msg12318files) == len(self.msg5files), \
-            "Number of msg12318 files must be equal to number of msg5 files"
+        
+        # Check if all files are aligned, i.e. if
+        # there is a static file for every dynamic file
+        # and if the files are in the same order.
+        assert align_data_files(self.msg12318files,self.msg5files)
 
         # Spatial bounding box of current AIS message space
         self.FRAME = frame
@@ -195,7 +198,7 @@ class SearchAgent:
     
     def get_all_ships(self,
                       njobs: int = 4, 
-                      skip_filter: bool = False) -> Targets:
+                      skip_tsplit: bool = False) -> Targets:
         """
         Returns a dictionary of all target ships in the
         frame of the search agent.
@@ -203,8 +206,8 @@ class SearchAgent:
         if not self._is_initialized:
             self.init(TimePosition(self.FRAME.center))
         
-        return self._mp_construct_target_vessels(
-            self.dynamic_msgs,njobs,skip_filter
+        return self.construct_target_vessels(
+            self.dynamic_msgs,None,False,njobs,skip_tsplit
         )
     
     def _construct_splines(self, 
@@ -380,7 +383,7 @@ class SearchAgent:
     
     def _impl_construct_target_vessel(self, 
                                       df: pd.DataFrame, 
-                                      skip_filter: bool = False) -> Targets:
+                                      skip_tsplit: bool = False) -> Targets:
         """
         Construct a single TargetVessel object from a given dataframe.
         """
@@ -417,7 +420,7 @@ class SearchAgent:
                 first = False
             else:
                 # Split track if change in speed or heading is too large
-                if not skip_filter:
+                if not skip_tsplit:
                     if split.is_split_point(tv.tracks[-1][-1],msg):
                         tv.tracks.append([])
                 tv.tracks[-1].append(msg)
@@ -432,7 +435,7 @@ class SearchAgent:
     
     def _mp_construct_target_vessels(self, df: pd.DataFrame,
                                      njobs: int = 4,
-                                     skip_filter: bool = False) -> Targets:
+                                     skip_tsplit: bool = False) -> Targets:
         """
         Adaption from `_construct_target_vessels` with multiprocessing.
         The initial dataframe is split into smaller dataframes, each
@@ -444,7 +447,7 @@ class SearchAgent:
         with mp.Pool(njobs) as pool:
             results = pool.starmap(
                 self._impl_construct_target_vessel,
-                [(frame,skip_filter) for frame in single_frames]
+                [(frame,skip_tsplit) for frame in single_frames]
             )  
         for res in results:
             targets.update(res)
@@ -519,17 +522,20 @@ class SearchAgent:
         return targets
     
     def construct_target_vessels(self,df: pd.DataFrame,
-                                 tpos: TimePosition, 
+                                 tpos: TimePosition = None, 
                                  overlap: bool = False, 
-                                 njobs: int = 4) -> Targets:
+                                 njobs: int = 4,
+                                 skip_tsplit: bool = False) -> Targets:
         """
         Construct a dictionary of TargetVessel objects
         from a given dataframe.
         """
         if njobs == 1:
+            assert tpos is not None, \
+                "If `njobs` is 1, `tpos` must not be None"
             return self._sp_construct_target_vessels(df,tpos,overlap)
         else:
-            return self._mp_construct_target_vessels(df,njobs)
+            return self._mp_construct_target_vessels(df,njobs,skip_tsplit)
         
     
     def _filter_overlapping(self, 
