@@ -193,7 +193,7 @@ class SearchAgent:
         neigbors = self._get_neighbors(tpos,search_radius)
         tgts = self.construct_target_vessels(neigbors,tpos,True,njobs=1)
         # Contruct Splines for all target ships
-        tgts = self._construct_splines(tgts,mode=interpolation)
+        tgts = self._interpolate_trajectories(tgts,mode=interpolation)
         return tgts
     
     def get_all_ships(self,
@@ -210,11 +210,11 @@ class SearchAgent:
             self.dynamic_msgs,None,False,njobs,skip_tsplit
         )
     
-    def _construct_splines(self, 
+    def _interpolate_trajectories(self, 
                            tgts: Targets,
                            mode: str = "auto") -> Targets:
         """
-        Interpolate all target ship tracks
+        Interpolate all target ships' trajectories.
         """
         for mmsi,tgt in list(tgts.items()):
             try:
