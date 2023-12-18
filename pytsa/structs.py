@@ -182,7 +182,7 @@ class TimePosition(Position):
 
         self.as_array: List[float] = field(default=list)
         self.timestamp = self._validate_timestamp()
-        self.timestamp = self.timestamp.timestamp()
+        self.timestamp = int(self.timestamp.timestamp())
 
         self.as_array = [self.timestamp,self.lat,self.lon]
         

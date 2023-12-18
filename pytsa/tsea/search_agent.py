@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Callable, List, Union
 from more_itertools import pairwise
 import multiprocessing as mp
+from copy import deepcopy
 
 import numpy as np
 import pandas as pd
@@ -21,7 +22,7 @@ from ..decode.filedescriptor import (
 )
 from ..decode.ais_decoder import decode_from_file
 from .targetship import TargetShip, AISMessage, InterpolationError
-from ..utils import align_data_files
+from ..utils import DataLoader
 
 # Exceptions
 class FileLoadingError(Exception):
@@ -48,9 +49,9 @@ class SearchAgent:
     """
     
     def __init__(self, 
-                 msg12318file: Union[Path,List[Path]],
+                 dynamic_paths: Union[Path,List[Path]],
                  frame: BoundingBox,
-                 msg5file: Union[Path,List[Path]],
+                 static_paths: Union[Path,List[Path]],
                  max_tgt_ships: int = 200,
                  preprocessor: Callable[[pd.DataFrame],pd.DataFrame] = _identity,
                  decoded: bool = True,
@@ -61,10 +62,10 @@ class SearchAgent:
                 for the taget ship extraction process.
                 AIS records outside this BoundingBox are 
                 not eligible for TargetShip construction.
-        msg12318file: path to a csv file containing AIS messages
-                    of type 1,2,3 and 18.
-        msg5file: path to a csv file containing AIS messages
-                    of type 5.
+        dynamic_paths: path or list of paths to a csv file 
+                       containing AIS messages of type 1,2,3 and 18.
+        static_paths: path or list of paths to a csv file 
+                      containing AIS messages of type 5.
         max_tgt_ships: maximum number of target ships to retrun
 
         preproceccor: Preprocessor function for input data. 
@@ -80,20 +81,24 @@ class SearchAgent:
                 is used. Defaults to False.
         """
 
-        if not isinstance(msg12318file,list):
-            self.msg12318files = [msg12318file]
+        if not isinstance(dynamic_paths,list):
+            dynamic_paths = [dynamic_paths]
+            dynamic_paths = [Path(p) for p in dynamic_paths]
         else:
-            self.msg12318files = msg12318file
+            dynamic_paths = [Path(p) for p in dynamic_paths]
 
-        if not isinstance(msg5file,list):
-            self.msg5files = [msg5file]
+        if not isinstance(static_paths,list):
+            static_paths = [static_paths]
+            static_paths = [Path(p) for p in static_paths]
         else:
-            self.msg5files = msg5file
-        
-        # Check if all files are aligned, i.e. if
-        # there is a static file for every dynamic file
-        # and if the files are in the same order.
-        assert align_data_files(self.msg12318files,self.msg5files)
+            static_paths = static_paths
+            static_paths = [Path(p) for p in static_paths]
+            
+        self.loader = DataLoader(
+            dynamic_paths,
+            static_paths,
+            preprocessor
+        )
 
         # Spatial bounding box of current AIS message space
         self.FRAME = frame
@@ -120,9 +125,6 @@ class SearchAgent:
         # List of cell-indicies of all 
         # currently buffered cells
         self._buffered_cell_idx = []
-
-        # Custom preprocessor function for input data
-        self.preprocessor = preprocessor
         
         # Flag indicating whether the input data
         # is already decoded or not
@@ -141,30 +143,9 @@ class SearchAgent:
         # was called
         self._n_position_correction = 0
         
-        self._is_initialized = False
-
-    def init(self, tpos: TimePosition)-> None:
-        """
-        tpos: TimePosition object for which 
-                TargetShips shall be extracted from 
-                AIS records.
-        """
-        pos = tpos.position
-        if not self._is_initialized:
-            # Load AIS Messages for specific cell
-            self.dynamic_msgs = self._load_dynamic_messages()
-            self.static_msgs = self._load_static_messages()
-            self._is_initialized = True
-            pos = f"{pos.lat:.3f}N, {pos.lon:.3f}E"
-            logger.info(
-                "Target Ship search agent initialized at "
-                f"{pos}"
-            )
-        else:
-            logger.info("Target Ship search agent already initialized")
-            return self 
-
-
+        # Indicator whether the input data is in memory
+        self._is_bufferd = False
+        
     def get_ships(self, 
                   tpos: TimePosition, 
                   search_radius: float = 20, # in nautical miles
@@ -185,16 +166,23 @@ class SearchAgent:
                 all vessels whose track is within the time delta of the
                 queried timestamp are returned.
         """
-        assert self._is_initialized, \
-            "Search agent not initialized. Call `init()` first."
         assert interpolation in ["linear","spline","auto"], \
             "Interpolation method must be either 'linear', 'spline' or 'auto'"
+        if not self._is_bufferd:
+            self._buffer_data()
         # Get neighbors
         neigbors = self._get_neighbors(tpos,search_radius)
         tgts = self.construct_target_vessels(neigbors,tpos,True,njobs=1)
         # Contruct Splines for all target ships
         tgts = self._interpolate_trajectories(tgts,mode=interpolation)
         return tgts
+    
+    def _buffer_data(self) -> None:
+        """
+        Load all AIS messages into memory.
+        """
+        self.loader.load()
+        self._is_bufferd = True
     
     def get_all_ships(self,
                       njobs: int = 4, 
@@ -203,11 +191,11 @@ class SearchAgent:
         Returns a dictionary of all target ships in the
         frame of the search agent.
         """
-        if not self._is_initialized:
-            self.init(TimePosition(self.FRAME.center))
-        
+        assert njobs > 1, \
+            ("Single process mode requires `tpos` and `neighbors` to be set.\n"
+            "For live vessel tracking use the get_ships() method.")
         return self.construct_target_vessels(
-            self.dynamic_msgs,None,False,njobs,skip_tsplit
+            njobs,skip_tsplit
         )
     
     def _interpolate_trajectories(self, 
@@ -224,67 +212,6 @@ class SearchAgent:
                 del tgts[mmsi]
         return tgts
     
-    def _load_static_messages(self) -> pd.DataFrame:
-        """
-        Load AIS Messages from a given path or list of paths
-        and return only messages that fall inside given `cell`-bounds.
-        """
-        snippets = []
-        for file in self.msg5files:
-            logger.info(f"Loading msg5 file '{file}'")
-            msg5 = pd.read_csv(
-                file,usecols=
-                [
-                    Msg5Columns.MMSI.value,
-                    Msg5Columns.SHIPTYPE.value,
-                    Msg5Columns.TO_BOW.value,
-                    Msg5Columns.TO_STERN.value
-                ]
-            )
-            snippets.append(msg5)
-        msg5 = pd.concat(snippets)
-        msg5 = msg5[msg5[Msg5Columns.MMSI.value].isin(self.dynamic_msgs[Msg12318Columns.MMSI.value])]
-        return decode_from_file(msg5,None,False) if not self.decoded else msg5
-
-    def _load_dynamic_messages(self) -> pd.DataFrame:
-        """
-        Load AIS Messages of type 1,2,3,18 from a 
-        given path, or list of paths, and return only 
-        messages that fall inside ``self.FRAME``.
-        """
-        snippets = []
-        try:
-            with Loader(self.FRAME):
-                for file in self.msg12318files:
-                    msg12318 = pd.read_csv(
-                        file,sep=",",
-                        usecols=[
-                            BaseColumns.TIMESTAMP.value,
-                            Msg12318Columns.MMSI.value,
-                            Msg12318Columns.LAT.value,
-                            Msg12318Columns.LON.value,
-                            Msg12318Columns.SPEED.value,
-                            Msg12318Columns.COURSE.value
-                        ]
-                    )
-                    self._n_original += len(msg12318)
-                    msg12318 = self.preprocessor(msg12318) # Apply custom filter
-                    msg12318[BaseColumns.TIMESTAMP.value] = pd.to_datetime(
-                        msg12318[BaseColumns.TIMESTAMP.value])
-                    msg12318 = msg12318.drop_duplicates(
-                        subset=[
-                            BaseColumns.TIMESTAMP.value,
-                            Msg12318Columns.MMSI.value
-                        ], keep="first"
-                    )
-                    self._n_filtered += len(msg12318)
-                    snippets.append(msg12318.query(self.spatial_filter))
-        except Exception as e:
-            logger.error(f"Error while loading cell data: {e}")
-            raise FileLoadingError(e)
-        stitched = pd.concat(snippets)
-        return decode_from_file(stitched,None,False) if not self.decoded else stitched
-            
     def _build_kd_tree(self, data: pd.DataFrame) -> cKDTree:
         """
         Build a kd-tree object from the `Lat` and `Lon` 
@@ -298,6 +225,7 @@ class SearchAgent:
             
         
     def _get_ship_type(self, 
+                       static_msgs: pd.DataFrame,
                        mmsi: int) -> list[int]:
         """
         Return the ship type of a given MMSI number.
@@ -305,7 +233,7 @@ class SearchAgent:
         If more than one ship type is found, the first
         one is returned and a warning is logged.
         """
-        st = self.static_msgs[self.static_msgs[Msg5Columns.MMSI.value] == mmsi]\
+        st = static_msgs[static_msgs[Msg5Columns.MMSI.value] == mmsi]\
             [Msg5Columns.SHIPTYPE.value].values
         st:np.ndarray = np.unique(st)
         if st.size > 1:
@@ -316,14 +244,16 @@ class SearchAgent:
         else:
             return list(st)
 
-    def _get_ship_length(self, mmsi: int) -> int:
+    def _get_ship_length(self, 
+                         static_msgs: pd.DataFrame,
+                         mmsi: int) -> int:
         """
         Return the ship length of a given MMSI number.
 
         If more than one ship length is found, the largest
         one is returned and a warning is logged.
         """
-        raw = self.static_msgs[self.static_msgs[Msg5Columns.MMSI.value] == mmsi]\
+        raw = static_msgs[static_msgs[Msg5Columns.MMSI.value] == mmsi]\
             [[Msg5Columns.TO_BOW.value,Msg5Columns.TO_STERN.value]].values
         sl:np.ndarray = np.sum(raw,axis=1)
         sl = np.unique(sl)
@@ -347,7 +277,7 @@ class SearchAgent:
 
         """
         filtered = self._time_filter(
-            self.dynamic_msgs,tpos.timestamp,self.time_delta
+            self.loader.dynamic_data,tpos.timestamp,self.time_delta
         )
         # Check if filterd result is empty
         if filtered.empty:
@@ -382,31 +312,37 @@ class SearchAgent:
         return [df[df[Msg12318Columns.MMSI.value] == mmsi] for mmsi in mmsis]
     
     def _impl_construct_target_vessel(self, 
-                                      df: pd.DataFrame, 
+                                      dyn: pd.DataFrame,
+                                      stat: pd.DataFrame, 
+                                      others: Targets,
                                       skip_tsplit: bool = False) -> Targets:
         """
         Construct a single TargetVessel object from a given dataframe.
         """
-        MMSI = df[Msg12318Columns.MMSI.value].unique()
+        MMSI = dyn[Msg12318Columns.MMSI.value].unique()
         assert len(MMSI) == 1, \
             "Input dataframe must only contain messages from a single MMSI"
         MMSI = int(MMSI)
-        # Initialize TargetVessel object
-        tv =  TargetShip(
-            ts = None,
-            mmsi=MMSI,
-            ship_type=self._get_ship_type(MMSI),
-            length=self._get_ship_length(MMSI),
-            tracks=[[]]
-        )
-        first = True
-            
-        df = df.sort_values(by=BaseColumns.TIMESTAMP.value)
+        if not others or MMSI not in others:
+            # Initialize TargetVessel object
+            tv =  TargetShip(
+                ts = None,
+                mmsi=MMSI,
+                ship_type=self._get_ship_type(stat,MMSI),
+                length=self._get_ship_length(stat,MMSI),
+                tracks=[[]]
+            )
+            first = True
+        else:
+            tv = others[MMSI]
+            first = False
+                
+        dyn = dyn.sort_values(by=BaseColumns.TIMESTAMP.value)
         
         for ts,lat,lon,sog,cog in zip(
-            df[BaseColumns.TIMESTAMP.value], df[Msg12318Columns.LAT.value],  
-            df[Msg12318Columns.LON.value],       df[Msg12318Columns.SPEED.value],
-            df[Msg12318Columns.COURSE.value]):
+            dyn[BaseColumns.TIMESTAMP.value], dyn[Msg12318Columns.LAT.value],  
+            dyn[Msg12318Columns.LON.value],       dyn[Msg12318Columns.SPEED.value],
+            dyn[Msg12318Columns.COURSE.value]):
             ts: pd.Timestamp # make type hinting happy
             
             msg = AISMessage(
@@ -425,15 +361,10 @@ class SearchAgent:
                         tv.tracks.append([])
                 tv.tracks[-1].append(msg)
         
-        # Remove tracks with only one observation
-        for track in tv.tracks:
-                if len(track) < 2:
-                    tv.tracks.remove(track)
-          
-        tv.find_shell()
-        return {MMSI:tv}
+        if MMSI not in others:
+            others[MMSI] = tv
     
-    def _mp_construct_target_vessels(self, df: pd.DataFrame,
+    def _mp_construct_target_vessels(self,
                                      njobs: int = 4,
                                      skip_tsplit: bool = False) -> Targets:
         """
@@ -442,20 +373,27 @@ class SearchAgent:
         containing only messages from a single MMSI. These dataframes
         are then processed in parallel and the results are merged.
         """
-        targets = {}
-        single_frames = self._distribute(df)
+        manager = mp.Manager()
+        targets = manager.dict()
         with mp.Pool(njobs) as pool:
-            results = pool.starmap(
-                self._impl_construct_target_vessel,
-                [(frame,skip_tsplit) for frame in single_frames]
-            )  
-        for res in results:
-            targets.update(res)
-        
+            for dyn, stat in self.loader.next_chunk():
+                single_frames = self._distribute(dyn)
+                pool.starmap(
+                    self._impl_construct_target_vessel,
+                    [(dframe,stat,targets,skip_tsplit) for dframe in single_frames]
+                ) 
+
+        # Remove tracks with only one observation
+        for vessel in targets.values():
+            vessel.find_shell()
+            for track in vessel.tracks:
+                    if len(track) < 2:
+                        vessel.tracks.remove(track)
+            
         return targets
 
-    def _sp_construct_target_vessels(self, 
-                                     df: pd.DataFrame, 
+    def _sp_construct_target_vessels(self,
+                                     neighbors: pd.DataFrame,
                                      tpos: TimePosition,
                                      overlap: bool) -> Targets:
         """
@@ -472,20 +410,17 @@ class SearchAgent:
         all vessels whose track is within the time delta of the
         queried timestamp are returned.
         
-        `max_tgap` is the maximum time gap in seconds between two AIS Messages.
-        `max_dgap` is the maximum distance gap in nautical miles between two AIS Messages.
-        
         If the temporal or spatial difference between two AIS Messages is too large,
         the track of the target ship is split into two tracks.
         
         """
-        df = df.sort_values(by=BaseColumns.TIMESTAMP.value)
         targets: Targets = {}
+        neighbors = neighbors.sort_values(by=BaseColumns.TIMESTAMP.value)
         
         for mmsi,ts,lat,lon,sog,cog in zip(
-            df[Msg12318Columns.MMSI.value], df[BaseColumns.TIMESTAMP.value],
-            df[Msg12318Columns.LAT.value],  df[Msg12318Columns.LON.value],
-            df[Msg12318Columns.SPEED.value],df[Msg12318Columns.COURSE.value]):
+            neighbors[Msg12318Columns.MMSI.value], neighbors[BaseColumns.TIMESTAMP.value],
+            neighbors[Msg12318Columns.LAT.value],  neighbors[Msg12318Columns.LON.value],
+            neighbors[Msg12318Columns.SPEED.value],neighbors[Msg12318Columns.COURSE.value]):
             ts: pd.Timestamp # make type hinting happy
             
             msg = AISMessage(
@@ -499,8 +434,8 @@ class SearchAgent:
                 targets[mmsi] = TargetShip(
                     ts = tpos.timestamp if tpos is not None else None,
                     mmsi=mmsi,
-                    ship_type=self._get_ship_type(mmsi),
-                    length=self._get_ship_length(mmsi),
+                    ship_type=self._get_ship_type(self.loader.static_data,mmsi),
+                    length=self._get_ship_length(self.loader.static_data,mmsi),
                     tracks=[[msg]]
                 )
             else:
@@ -518,10 +453,11 @@ class SearchAgent:
         
         if overlap:
             self._filter_overlapping(targets,tpos)
-        
+            
         return targets
     
-    def construct_target_vessels(self,df: pd.DataFrame,
+    def construct_target_vessels(self,
+                                 neighbors: pd.DataFrame = None,
                                  tpos: TimePosition = None, 
                                  overlap: bool = False, 
                                  njobs: int = 4,
@@ -531,11 +467,13 @@ class SearchAgent:
         from a given dataframe.
         """
         if njobs == 1:
-            assert tpos is not None, \
-                "If `njobs` is 1, `tpos` must not be None"
-            return self._sp_construct_target_vessels(df,tpos,overlap)
+            if tpos is None or neighbors is  None:
+                raise ValueError(
+                    "Single process mode requires `tpos` and `neighbors` to be set.\n"
+                    "For extracting all target ships, use `njobs > 1`.")
+            return self._sp_construct_target_vessels(neighbors,tpos,overlap)
         else:
-            return self._mp_construct_target_vessels(df,njobs,skip_tsplit)
+            return self._mp_construct_target_vessels(njobs,skip_tsplit)
         
     
     def _filter_overlapping(self, 

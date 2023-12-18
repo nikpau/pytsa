@@ -1,11 +1,12 @@
 [tool.poetry]
 name = "pytsa"
-version = "2.0.1"
+version = "2.1.0"
 description = "Toolbox for decoding and processing AIS Messages."
 authors = [
     "Niklas Paulig <niklas.paulig@tu-dresden.de>"
 ]
 readme = "README.md"
+packages = [{include = "pytsa"}]
 
 [tool.poetry.dependencies]
 python = "^3.10"    
@@ -20,7 +21,7 @@ utm  = "^0.7.0"
 vincenty = "^0.1.4"
 
 # [tool.poetry.scripts]
-# persist = "persist.__main__:main"
+# pytsa = "pytsa.__main__:main"
 
 [build-system]
 requires = ["poetry-core"]
