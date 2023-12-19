@@ -383,12 +383,15 @@ class SearchAgent:
                     [(dframe,stat,targets,skip_tsplit) for dframe in single_frames]
                 ) 
 
+        targets: Targets = targets.copy()
         # Remove tracks with only one observation
-        for vessel in targets.values():
+        for vessel in list(targets.values()):
             vessel.find_shell()
             for track in vessel.tracks:
                     if len(track) < 2:
                         vessel.tracks.remove(track)
+            if not vessel.tracks:
+                del targets[vessel.mmsi]
             
         return targets
 
