@@ -73,6 +73,12 @@ class ShipType(Enum):
     See here for more information:
     https://coast.noaa.gov/data/marinecadastre/ais/VesselTypeCodes2018.pdf
     """
+    __order__ = (
+        "NOTAVAILABLE WIG FISHING TUGTOW MILITARY "
+        "SAILING PLEASURE HSC PASSENGER "
+        "CARGO TANKER OTHER"
+    )
+    NOTAVAILABLE = 0
     WIG = range(20,30) # Wing in ground
     FISHING = 30
     TUGTOW = range(31,33)
@@ -84,6 +90,19 @@ class ShipType(Enum):
     CARGO = range(70,80)
     TANKER = range(80,90)
     OTHER = range(90,100)
+    
+    def from_value(self, value: int) -> ShipType:
+        """
+        Return the ship type from a value
+        """
+        for st in ShipType:
+            if isinstance(st.value, range):
+                if value in st.value:
+                    return st
+            else:         
+                if value == st.value:
+                    return st
+        raise ValueError(f"Ship type {value} not found.")
 
 @dataclass
 class BoundingBox:
