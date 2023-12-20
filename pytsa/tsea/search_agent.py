@@ -195,7 +195,7 @@ class SearchAgent:
             ("Single process mode requires `tpos` and `neighbors` to be set.\n"
             "For live vessel tracking use the get_ships() method.")
         return self.construct_target_vessels(
-            njobs,skip_tsplit
+            None,None,False,njobs,skip_tsplit
         )
     
     def _interpolate_trajectories(self, 
@@ -374,25 +374,26 @@ class SearchAgent:
         are then processed in parallel and the results are merged.
         """
         manager = mp.Manager()
-        targets = manager.dict()
+        _targets = manager.dict()
         with mp.Pool(njobs) as pool:
             for dyn, stat in self.loader.next_chunk():
                 single_frames = self._distribute(dyn)
                 pool.starmap(
                     self._impl_construct_target_vessel,
-                    [(dframe,stat,targets,skip_tsplit) for dframe in single_frames]
+                    [(dframe,stat,_targets,skip_tsplit) for dframe in single_frames]
                 ) 
 
-        targets: Targets = targets.copy()
+        targets: Targets = _targets.copy()
         # Remove tracks with only one observation
         for vessel in list(targets.values()):
             vessel.find_shell()
-            for track in vessel.tracks:
-                    if len(track) < 2:
-                        vessel.tracks.remove(track)
+            vessel.tracks = [track for track in vessel.tracks if len(track) > 1]
             if not vessel.tracks:
+                logger.warning(
+                    f"Target ship {vessel.mmsi} has no tracks left after filtering."
+                )
                 del targets[vessel.mmsi]
-            
+        
         return targets
 
     def _sp_construct_target_vessels(self,
