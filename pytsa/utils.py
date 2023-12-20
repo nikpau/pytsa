@@ -114,8 +114,6 @@ class DataLoader:
                  static_paths: list[Path],
                  pre_processor: Callable[[pd.DataFrame],pd.DataFrame]) -> None:
         
-        self.dynamic_paths = dynamic_paths
-        self.static_paths = static_paths
         self.preprocessor = pre_processor
         
         # Check that we only have csv files
@@ -230,7 +228,7 @@ class DataLoader:
         """
         self.dynamic_data = pd.DataFrame()
         self.static_data = pd.DataFrame()
-        for stat_path, dyn_path in zip(self.static_paths,self.dynamic_paths):
+        for stat_path, dyn_path in zip(self.sdyn,self.sstat):
             logger.info(f"Loading {stat_path.stem} and {dyn_path.stem}")
             d = pd.read_csv(dyn_path,sep=",",usecols=self.dynamic_columns)
             d = self._dynamic_preprocessor(d)
@@ -240,8 +238,8 @@ class DataLoader:
         logger.info("Done.")
     
     def next_chunk(self,
-                  decode: bool = False
-                  ) -> Generator[
+                   decode: bool = False
+                ) -> Generator[
                       tuple[pd.DataFrame,pd.DataFrame], 
                       None, 
                       None
@@ -263,7 +261,7 @@ class DataLoader:
             sep=",",
             usecols=self.static_columns
         )
-        for dyn_path, stat_path in zip(self.dynamic_paths,self.static_paths):
+        for dyn_path, stat_path in zip(self.sdyn,self.sstat):
             
             # Count rows of both files
             with open(dyn_path) as f, open(stat_path) as g:
