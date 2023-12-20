@@ -355,6 +355,14 @@ class SearchAgent:
                 tv.tracks[-1].append(msg)
                 first = False
             else:
+                # Check if last message has an identical timestamp.
+                # This can happen if the chunking process splits
+                # the input dataframe such, that the last message
+                # of one chunk is identical to the first message
+                # of the next chunk but from a different base station.
+                if tv.tracks[-1][-1].timestamp == msg.timestamp:
+                    continue
+                
                 # Split track if change in speed or heading is too large
                 if not skip_tsplit:
                     if split.is_split_point(tv.tracks[-1][-1],msg):
