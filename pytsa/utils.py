@@ -237,7 +237,7 @@ class DataLoader:
             self.static_data = pd.concat([self.static_data,s])
         logger.info("Done.")
     
-    def next_chunk(self,
+    def iterate_chunks(self,
                    decode: bool = False
                 ) -> Generator[
                       tuple[pd.DataFrame,pd.DataFrame], 

@@ -384,7 +384,7 @@ class SearchAgent:
         manager = mp.Manager()
         _targets = manager.dict()
         with mp.Pool(njobs) as pool:
-            for dyn, stat in self.loader.next_chunk():
+            for dyn, stat in self.loader.iterate_chunks():
                 single_frames = self._distribute(dyn)
                 pool.starmap(
                     self._impl_construct_target_vessel,
