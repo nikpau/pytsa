@@ -157,6 +157,6 @@ def is_split_point(msg_t0: AISMessage,
         #deviation_from_reported_too_large(msg_t0,msg_t1) or
         time_difference_too_large(msg_t0,msg_t1) or
         # distance_too_large(msg_t0,msg_t1) or
-        speed_change_too_large(msg_t0,msg_t1)# or
-        #heading_change_too_large(msg_t0,msg_t1)
+        speed_change_too_large(msg_t0,msg_t1) or
+        heading_change_too_large(msg_t0,msg_t1)
     )
