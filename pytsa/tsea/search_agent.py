@@ -313,8 +313,7 @@ class SearchAgent:
     
     def _impl_construct_target_vessel(self, 
                                       dyn: pd.DataFrame,
-                                      stat: pd.DataFrame,
-                                      skip_tsplit: bool = False) -> Targets:
+                                      stat: pd.DataFrame) -> Targets:
         """
         Construct a single TargetVessel object from a given dataframe.
         """
@@ -362,11 +361,14 @@ class SearchAgent:
                 single_frames = self._distribute(dyn)
                 res = pool.starmap(
                     self._impl_construct_target_vessel,
-                    [(dframe,stat,skip_tsplit) for dframe in single_frames]
+                    [(dframe,stat) for dframe in single_frames]
                 )
                 singles.append(res)
         targets = self._join_tracks(*singles)
-        return self._determine_split_points(targets)
+        if not skip_tsplit:
+            targets = self._determine_split_points(targets)
+        return targets
+        
     
     def _join_tracks(self,
                     *singles: Targets) -> Targets:
