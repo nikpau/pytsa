@@ -313,26 +313,21 @@ class SearchAgent:
     
     def _impl_construct_target_vessel(self, 
                                       dyn: pd.DataFrame,
-                                      stat: pd.DataFrame, 
-                                      others: Targets,
+                                      stat: pd.DataFrame,
                                       skip_tsplit: bool = False) -> Targets:
         """
         Construct a single TargetVessel object from a given dataframe.
         """
         MMSI = int(dyn[Msg12318Columns.MMSI.value].iloc[0])
-        if not others or MMSI not in others:
-            # Initialize TargetVessel object
-            tv =  TargetShip(
-                ts = None,
-                mmsi=MMSI,
-                ship_type=self._get_ship_type(stat,MMSI),
-                length=self._get_ship_length(stat,MMSI),
-                tracks=[[]]
-            )
-            first = True
-        else:
-            tv = others[MMSI]
-            first = False
+        # Initialize TargetVessel object
+        tv =  TargetShip(
+            ts = None,
+            mmsi=MMSI,
+            ship_type=self._get_ship_type(stat,MMSI),
+            length=self._get_ship_length(stat,MMSI),
+            tracks=[[]]
+        )
+        first = True
                 
         dyn = dyn.sort_values(by=BaseColumns.TIMESTAMP.value)
         
@@ -348,23 +343,7 @@ class SearchAgent:
                 lat=lat,lon=lon,
                 COG=cog,SOG=sog
             )
-            if first:
-                tv.tracks[-1].append(msg)
-                first = False
-            else:
-                # Check if last message has an identical timestamp.
-                # This can happen if the chunking process splits
-                # the input dataframe such, that the last message
-                # of one chunk is identical to the first message
-                # of the next chunk but from a different base station.
-                if tv.tracks[-1][-1].timestamp == msg.timestamp:
-                    continue
-                
-                # Split track if change in speed or heading is too large
-                if not skip_tsplit:
-                    if split.is_split_point(tv.tracks[-1][-1],msg):
-                        tv.tracks.append([])
-                tv.tracks[-1].append(msg)
+            tv.tracks[-1].append(msg)
 
         return {MMSI:tv}
     
@@ -377,31 +356,61 @@ class SearchAgent:
         containing only messages from a single MMSI. These dataframes
         are then processed in parallel and the results are merged.
         """
-        _targets = dict()
+        singles = []
         with mp.Pool(njobs) as pool:
             for dyn, stat in self.loader.iterate_chunks():
                 single_frames = self._distribute(dyn)
-                singles = pool.starmap(
+                res = pool.starmap(
                     self._impl_construct_target_vessel,
-                    [(dframe,stat,_targets,skip_tsplit) for dframe in single_frames]
+                    [(dframe,stat,skip_tsplit) for dframe in single_frames]
                 )
-                # Syncronize results
-                for single in singles:
-                    _targets.update(single)
-
-        targets: Targets = _targets.copy()
-        # Remove tracks with only one observation
-        for vessel in list(targets.values()):
-            vessel.find_shell()
-            vessel.tracks = [track for track in vessel.tracks if len(track) > 1]
-            if not vessel.tracks:
-                logger.warning(
-                    f"Target ship {vessel.mmsi} has no tracks left after filtering."
-                )
-                del targets[vessel.mmsi]
+                singles.append(res)
+        targets = self._join_tracks(*singles)
+        return self._determine_split_points(targets)
+    
+    def _join_tracks(self,
+                    *singles: Targets) -> Targets:
+        """
+        Join tracks of multiple TargetShip objects
+        into a single TargetShip object.
         
+        Note: The input TargetShip objects are only 
+        consisting of a single track each, as they
+        just have been constructed.
+        """
+        targets: Targets = {}
+        for single in singles:
+            for mmsi,tgt in single.items():
+                if mmsi not in targets:
+                    targets[mmsi] = tgt
+                else:
+                    targets[mmsi].tracks[0].extend(tgt.tracks)
+                    
+    def _determine_split_points(self,
+                                targets: Targets) -> Targets:
+        """
+        Determine split points for all target ships.
+        """
+        for tgt in targets.values():
+            for track in tgt.tracks:
+                _itracks = [] # Intermediary track
+                tstartidx = 0
+                for i, (msg_t0,msg_t1) in enumerate(pairwise(track)):
+                    if msg_t0.timestamp == msg_t1.timestamp:
+                        continue
+                    if split.is_split_point(msg_t0,msg_t1):
+                        _itracks.append(track[tstartidx:i+1])
+                        tstartidx = i+1
+                # Only keep tracks with more than one observation
+                tgt.tracks = [track for track in _itracks if len(track) > 1]
+                # If no tracks are left, remove target ship
+                if not tgt.tracks:
+                    logger.warning(
+                        f"Target ship {tgt.mmsi} has no tracks left after filtering."
+                    )
+                    del targets[tgt.mmsi]
         return targets
-
+                        
     def _sp_construct_target_vessels(self,
                                      neighbors: pd.DataFrame,
                                      tpos: TimePosition,
