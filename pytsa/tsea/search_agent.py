@@ -319,10 +319,7 @@ class SearchAgent:
         """
         Construct a single TargetVessel object from a given dataframe.
         """
-        MMSI = dyn[Msg12318Columns.MMSI.value].unique()
-        assert len(MMSI) == 1, \
-            "Input dataframe must only contain messages from a single MMSI"
-        MMSI = int(MMSI)
+        MMSI = int(dyn[Msg12318Columns.MMSI.value].iloc[0])
         if not others or MMSI not in others:
             # Initialize TargetVessel object
             tv =  TargetShip(
@@ -368,9 +365,8 @@ class SearchAgent:
                     if split.is_split_point(tv.tracks[-1][-1],msg):
                         tv.tracks.append([])
                 tv.tracks[-1].append(msg)
-        
-        if MMSI not in others:
-            others[MMSI] = tv
+
+        return {MMSI:tv}
     
     def _mp_construct_target_vessels(self,
                                      njobs: int = 4,
@@ -381,15 +377,17 @@ class SearchAgent:
         containing only messages from a single MMSI. These dataframes
         are then processed in parallel and the results are merged.
         """
-        manager = mp.Manager()
-        _targets = manager.dict()
+        _targets = dict()
         with mp.Pool(njobs) as pool:
             for dyn, stat in self.loader.iterate_chunks():
                 single_frames = self._distribute(dyn)
-                pool.starmap(
+                singles = pool.starmap(
                     self._impl_construct_target_vessel,
                     [(dframe,stat,_targets,skip_tsplit) for dframe in single_frames]
-                ) 
+                )
+                # Syncronize results
+                for single in singles:
+                    _targets.update(single)
 
         targets: Targets = _targets.copy()
         # Remove tracks with only one observation
