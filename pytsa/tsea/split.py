@@ -43,7 +43,7 @@ SQUANTILES = {_QVALUES[k]: _SQUANTILES[k] for k in range(1001)}
 # Empirical quantiles for the
 # distance [mi] between two consecutive
 # messages. NOTE: NOT USED in original paper.
-DQUANTILES = {_QVALUES[k]: _DQUANTILES[k] for k in range(101)}
+DQUANTILES = {np.linspace(0,100,101)[k]: _DQUANTILES[k] for k in range(101)}
 
 # Empirical quantiles for the
 # difference between the reported
