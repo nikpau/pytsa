@@ -134,7 +134,7 @@ def deviation_from_reported_too_large(msg_t0: AISMessage,
         msgs = (msg_t0,msg_t1)
         diff = avg_speed(*msgs) - speed_from_position(*msgs)
         return not (
-            RMCSQUANTILES[0.5] < diff < RMCSQUANTILES[99.5]
+            RMCSQUANTILES[2.5] < diff < RMCSQUANTILES[97.5]
         )
         
 def time_difference_too_large(msg_t0: AISMessage,
@@ -144,7 +144,7 @@ def time_difference_too_large(msg_t0: AISMessage,
         is larger than the 95% quantile of the time difference distribution.
         """
         return not (
-            TQUANTILES[99.0] > (msg_t1.timestamp - msg_t0.timestamp)
+            TQUANTILES[95.0] > (msg_t1.timestamp - msg_t0.timestamp)
         )
 
 def is_split_point(msg_t0: AISMessage,
