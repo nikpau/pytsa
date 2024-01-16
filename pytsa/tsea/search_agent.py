@@ -394,7 +394,12 @@ class SearchAgent:
         """
         Determine split points for all target ships.
         """
+        nvessels = len(targets)
         for tgt in list(targets.values()):
+            logger.info(
+                f"Processing target ship {tgt.mmsi} "
+                f"({list(targets).index(tgt.mmsi)+1}/{nvessels})"
+            )
             for track in tgt.tracks:
                 _itracks = [] # Intermediary track
                 tstartidx = 0
