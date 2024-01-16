@@ -84,7 +84,7 @@ def distance_too_large(msg_t0: AISMessage,
     """
     d = utils.greater_circle_distance(
         msg_t0.lon,msg_t0.lat,msg_t1.lon,msg_t1.lat,method="haversine")
-    return d > DQUANTILES[95]
+    return d > DQUANTILES[99]
 
 def speed_from_position(msg_t0: AISMessage, 
                         msg_t1: AISMessage) -> float:
@@ -156,7 +156,7 @@ def is_split_point(msg_t0: AISMessage,
     return (
         deviation_from_reported_too_large(msg_t0,msg_t1) or
         time_difference_too_large(msg_t0,msg_t1) or
-        # distance_too_large(msg_t0,msg_t1) or
+        distance_too_large(msg_t0,msg_t1) or
         speed_change_too_large(msg_t0,msg_t1) or
         heading_change_too_large(msg_t0,msg_t1)
     )
