@@ -386,7 +386,7 @@ class SearchAgent:
                 if mmsi not in targets:
                     targets[mmsi] = tgt
                 else:
-                    targets[mmsi].tracks[0].extend(tgt.tracks)
+                    targets[mmsi].tracks[0].extend(tgt.tracks[0])
                     
     def _determine_split_points(self,
                                 targets: Targets) -> Targets:
