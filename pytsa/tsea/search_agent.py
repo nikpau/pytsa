@@ -342,7 +342,14 @@ class SearchAgent:
                 lat=lat,lon=lon,
                 COG=cog,SOG=sog
             )
-            tv.tracks[-1].append(msg)
+            if first:
+                tv.tracks[-1].append(msg)
+                first = False
+            else:
+                # Check if message is a duplicate, i.e. had been 
+                # received by multiple AIS stations
+                if msg.timestamp == tv.tracks[-1][-1].timestamp:
+                    continue
 
         return {MMSI:tv}
     
@@ -386,6 +393,14 @@ class SearchAgent:
                 if mmsi not in targets:
                     targets[mmsi] = tgt
                 else:
+                    # We check again if the first message of the
+                    # second track is a duplicate of the last message
+                    # of the first track. This can happen if the 
+                    # duplicate message was exactly cut off by 
+                    # the chunking process, and thus was not removed
+                    # by the `_impl_construct_target_vessel` method.
+                    if targets[mmsi].tracks[0][-1].timestamp == tgt.tracks[0][0].timestamp:
+                        tgt.tracks[0].pop(0)
                     targets[mmsi].tracks[0].extend(tgt.tracks[0])
         return targets
                     
@@ -407,18 +422,19 @@ class SearchAgent:
                 tstartidx = 0
                 for i, (msg_t0,msg_t1) in enumerate(pairwise(track)):
                     if msg_t0.timestamp == msg_t1.timestamp:
+                        track.remove(msg_t1)
                         continue
                     if split.is_split_point(msg_t0,msg_t1):
                         _itracks.append(track[tstartidx:i+1])
                         tstartidx = i+1
-                # Only keep tracks with more than one observation
-                tgt.tracks = [track for track in _itracks if len(track) > 1]
-                # If no tracks are left, remove target ship
-                if not tgt.tracks:
-                    logger.warning(
-                        f"Target ship {tgt.mmsi} has no tracks left after filtering."
-                    )
-                    del targets[tgt.mmsi]
+            # Only keep tracks with more than one observation
+            tgt.tracks = [track for track in _itracks if len(track) > 1]
+            # If no tracks are left, remove target ship
+            if not tgt.tracks:
+                logger.warning(
+                    f"Target ship {tgt.mmsi} has no tracks left after filtering."
+                )
+                del targets[tgt.mmsi]
         logger.info("Splitting done.")
         return targets
                         
