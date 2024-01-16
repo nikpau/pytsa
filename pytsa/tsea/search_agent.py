@@ -355,7 +355,7 @@ class SearchAgent:
         containing only messages from a single MMSI. These dataframes
         are then processed in parallel and the results are merged.
         """
-        singles = []
+        singles: list[Targets] = []
         with mp.Pool(njobs) as pool:
             for dyn, stat in self.loader.iterate_chunks():
                 single_frames = self._distribute(dyn)
@@ -363,7 +363,7 @@ class SearchAgent:
                     self._impl_construct_target_vessel,
                     [(dframe,stat) for dframe in single_frames]
                 )
-                singles.append(res)
+                singles.extend(res)
         targets = self._join_tracks(*singles)
         if not skip_tsplit:
             targets = self._determine_split_points(targets)
@@ -387,13 +387,14 @@ class SearchAgent:
                     targets[mmsi] = tgt
                 else:
                     targets[mmsi].tracks[0].extend(tgt.tracks[0])
+        return targets
                     
     def _determine_split_points(self,
                                 targets: Targets) -> Targets:
         """
         Determine split points for all target ships.
         """
-        for tgt in targets.values():
+        for tgt in list(targets.values()):
             for track in tgt.tracks:
                 _itracks = [] # Intermediary track
                 tstartidx = 0
