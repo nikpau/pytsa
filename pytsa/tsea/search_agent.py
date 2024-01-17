@@ -350,6 +350,7 @@ class SearchAgent:
                 # received by multiple AIS stations
                 if msg.timestamp == tv.tracks[-1][-1].timestamp:
                     continue
+                tv.tracks[-1].append(msg)
 
         return {MMSI:tv}
     
