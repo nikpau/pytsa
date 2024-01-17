@@ -29,32 +29,33 @@ with open(f"{DATA_DIR}/tquants.pkl","rb") as f:
 # with the quantile as key and the
 # quantile value as value. 
 # ==================================
-_QVALUES = np.linspace(0,100,1001)
+_NQ = 1001 # Number of quantiles
+_QVALUES = np.linspace(0,100,1001) # Quantile values
 # Empirical quantiles for the
 # change in heading [°] between two 
 # consecutive messages.
-HQUANTILES = {_QVALUES[k]: _HQUANTILES[k] for k in range(1001)}
+HQUANTILES = {_QVALUES[k]: _HQUANTILES[k] for k in range(_NQ)}
 
 # Empirical quantiles for the
 # change in speed [kn] between two
 # consecutive messages.
-SQUANTILES = {_QVALUES[k]: _SQUANTILES[k] for k in range(1001)}
+SQUANTILES = {_QVALUES[k]: _SQUANTILES[k] for k in range(_NQ)}
 
 # Empirical quantiles for the
 # distance [mi] between two consecutive
 # messages. NOTE: NOT USED in original paper.
-DQUANTILES = {np.linspace(0,100,101)[k]: _DQUANTILES[k] for k in range(101)}
+DQUANTILES = {_QVALUES[k]: _DQUANTILES[k] for k in range(_NQ)}
 
 # Empirical quantiles for the
 # difference between the reported
 # speed [kn] and the speed calculated
 # from the spatial difference and time difference.
-RMCSQUANTILES = {_QVALUES[k]: _RMCSQUANTILES[k] for k in range(1001)}
+RMCSQUANTILES = {_QVALUES[k]: _RMCSQUANTILES[k] for k in range(_NQ)}
 
 # Empirical quantiles for the
 # time difference [s] between two
 # consecutive messages.
-TQUANTILES = {_QVALUES[k]: _TQUANTILES[k] for k in range(1001)}
+TQUANTILES = {_QVALUES[k]: _TQUANTILES[k] for k in range(_NQ)}
 
 def speed_change_too_large(msg_t0: AISMessage, 
                            msg_t1: AISMessage) -> bool:
