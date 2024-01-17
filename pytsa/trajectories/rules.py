@@ -97,15 +97,24 @@ def too_few_obs(track: list[AISMessage], n: int) -> bool:
     """
     return len(track) < n
 
-def too_small_spatial_deviation(track: list[AISMessage], sd: float) -> bool:
+def spatial_deviation(track: list[AISMessage], sd: tuple | float) -> bool:
     """
     Return True if the summed standard deviation of lat/lon 
-    of the track of the given vessel is smallerw than `sd`.
+    of the track of the given vessel is smaller than `sd`,
+    or if `sd` is a tuple, if the standard deviation is
+    within the range of `sd`.
     Unit of `sd` is [°].
     """
+    assert isinstance(sd,(tuple,float))
+    if isinstance(sd,float):
+        assert sd > 0
+        lower, upper = 0, sd
+    else:
+        assert all(s > 0 for s in sd)
+        lower, upper = sd
     sdlon = np.sqrt(np.var([v.lon for v in track]))
     sdlat = np.sqrt(np.var([v.lat for v in track]))
-    return (sdlon+sdlat) < sd
+    return lower <= sdlon + sdlat <= upper
 
 def too_small_span(track: list[AISMessage], span: float) -> bool:
     """
@@ -119,5 +128,5 @@ def too_small_span(track: list[AISMessage], span: float) -> bool:
 # Example recipe---------------------------------------------------------------
 ExampleRecipe = Recipe(
     partial(too_few_obs, n=100),
-    partial(too_small_spatial_deviation, sd=0.1)
+    partial(spatial_deviation, sd=0.1)
 )
