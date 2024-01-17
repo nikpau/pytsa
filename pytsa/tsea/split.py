@@ -106,23 +106,6 @@ def avg_speed(msg_t0: AISMessage,
     """
     return (msg_t0.SOG + msg_t1.SOG) / 2
 
-def cosine_of_angle_between(msg_t0: AISMessage,
-                            msg_t1: AISMessage,
-                            msg_t2: AISMessage) -> float:
-    """
-    Return the cosine of the angle between the track
-    of three AIS Messages.
-    """
-    p1 = (msg_t0.lon,msg_t0.lat)
-    p2 = (msg_t1.lon,msg_t1.lat)
-    p3 = (msg_t2.lon,msg_t2.lat)
-    
-    v1 = np.array(p1) - np.array(p2)
-    v2 = np.array(p3) - np.array(p2)
-    
-    nom = np.dot(v1,v2)
-    den = np.linalg.norm(v1) * np.linalg.norm(v2)
-    return nom / den
 
 def deviation_from_reported_too_large(msg_t0: AISMessage,
                                       msg_t1: AISMessage) -> bool:

@@ -34,7 +34,7 @@ class Inspector:
     """
     def __init__(self, data: Targets, recipe: Recipe) -> None:
         self.data = data
-        self.recipe = recipe.cook()
+        self.condition = recipe.cook()
         self.rejected: Targets = {}
         self.accepted: Targets = {}
     
@@ -88,7 +88,7 @@ class Inspector:
             logger.info(f"Inspecting target ship {i+1}/{nships}")
             for track in target_ship.tracks:
                 _n += 1
-                if self.recipe(track):
+                if self.condition(track):
                     self.reject_track(target_ship,track)
                 else:
                     self.accept_track(target_ship,track)
@@ -122,3 +122,77 @@ class Inspector:
             target[vessel.mmsi] = deepcopy(vessel)
             target[vessel.mmsi].tracks = []
         target[vessel.mmsi].tracks.append(track)
+
+# Utility functions for calculating
+# the adapted average smoothness
+def cosine_of_angle_between(msg_t0: AISMessage,
+                            msg_t1: AISMessage,
+                            msg_t2: AISMessage) -> float:
+    """
+    Return the cosine of the angle between the track
+    of three AIS Messages.
+    """
+    p1 = (msg_t0.lon,msg_t0.lat)
+    p2 = (msg_t1.lon,msg_t1.lat)
+    p3 = (msg_t2.lon,msg_t2.lat)
+    
+    v1 = np.array(p1) - np.array(p2)
+    v2 = np.array(p3) - np.array(p2)
+    
+    nom = np.dot(v1,v2)
+    den = np.linalg.norm(v1) * np.linalg.norm(v2)
+    return nom / den
+
+def angle_between(msg_t0: AISMessage,
+                  msg_t1: AISMessage,
+                  msg_t2: AISMessage) -> float:
+        """
+        Return the angle between the track
+        of three AIS Messages.
+        """
+        return np.arccos(cosine_of_angle_between(msg_t0,msg_t1,msg_t2))
+    
+def average_smoothness(track: list[AISMessage]) -> float:
+    """
+    Calculate the average smoothness of a navigational 
+    track.
+
+    This function computes the average smoothness of a 
+    path represented  by a list of AISMessage objects.  
+    It evaluates the smoothness based on the angles 
+    formed at each point along the path, where each 
+    angle is determined by a sequence of three consecutive 
+    AISMessage points. The smoothness is a measure of 
+    how straight or curved the path is, with larger 
+    angles indicating a smoother path.
+
+    The angle at each point is normalized by dividing it 
+    by π, with the function 'angle_between' used to 
+    calculate these angles. Since 'angle_between' returns 
+    values from 0 to π, the normalized angles will range 
+    from 0 (representing a U-turn)  to 1 (representing a 
+    straight line).
+
+    Parameters:
+    - track (list[AISMessage]): A list of AISMessage objects 
+      representing the navigational path. Each AISMessage 
+      contains positional data necessary for angle calculation.
+
+    Returns:
+    - float: The average smoothness of the track, 
+      represented as a float. This value is the mean 
+      of the normalized angles along the track, where 
+      a larger values indicates a smoother track.
+
+    Note:
+    - The function assumes that the track has at least three 
+       AISMessage points to form at least one angle. If the 
+       track has fewer than three points, the behavior of the 
+       function is unspecified.
+    """
+    angles = []
+    for i in range(1,len(track)-1):
+        angles.append(
+            angle_between(track[i-1],track[i],track[i+1]) / np.pi
+        )
+    return np.mean(angles)
