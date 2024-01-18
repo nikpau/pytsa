@@ -375,8 +375,19 @@ class SearchAgent:
         targets = self._join_tracks(*singles)
         if not skip_tsplit:
             targets = self._determine_split_points(targets)
+        else: # Sort by timestamp
+            targets = self._sort_by_timestamp(targets)
         return targets
         
+    def _sort_by_timestamp(self,
+                            targets: Targets) -> Targets:
+        """
+        Sort all target ships' tracks by timestamp.
+        """
+        for tgt in targets.values():
+            for track in tgt.tracks:
+                track.sort(key=lambda x: x.timestamp)
+        return targets
     
     def _join_tracks(self,
                     *singles: Targets) -> Targets:
