@@ -380,13 +380,12 @@ class SearchAgent:
         return targets
         
     def _sort_by_timestamp(self,
-                            targets: Targets) -> Targets:
+                           targets: Targets) -> Targets:
         """
         Sort all target ships' tracks by timestamp.
         """
         for tgt in targets.values():
-            for track in tgt.tracks:
-                track.sort(key=lambda x: x.timestamp)
+            tgt.tracks = [sorted(track,key=lambda x: x.timestamp) for track in tgt.tracks]
         return targets
     
     def _join_tracks(self,
