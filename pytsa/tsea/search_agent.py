@@ -5,13 +5,10 @@ from pathlib import Path
 from typing import Callable, List, Union
 from more_itertools import pairwise
 import multiprocessing as mp
-from copy import deepcopy
-
 import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
-
-from ..logger import Loader, logger
+from ..logger import logger
 from ..structs import (
     BoundingBox, TimePosition,
     UNIX_TIMESTAMP
@@ -20,7 +17,6 @@ from . import split
 from ..decode.filedescriptor import (
     BaseColumns, Msg12318Columns, Msg5Columns
 )
-from ..decode.ais_decoder import decode_from_file
 from .targetship import TargetShip, AISMessage, InterpolationError
 from ..utils import DataLoader
 
@@ -379,13 +375,17 @@ class SearchAgent:
             targets = self._sort_by_timestamp(targets)
         return targets
         
-    def _sort_by_timestamp(self,
-                           targets: Targets) -> Targets:
+    def _rm_dups(self, targets: Targets) -> Targets:
         """
-        Sort all target ships' tracks by timestamp.
+        Remove duplicate timestamps from the tracks
+        of the given target ships and return the
+        time-sorted tracks.
         """
         for tgt in targets.values():
-            tgt.tracks = [sorted(track,key=lambda x: x.timestamp) for track in tgt.tracks]
+            tgt.tracks = [
+                list(set(track)).sort(key=lambda x: x.timestamp) 
+                for track in tgt.tracks
+            ]
         return targets
     
     def _join_tracks(self,

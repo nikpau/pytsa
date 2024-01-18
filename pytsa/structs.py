@@ -78,6 +78,12 @@ class AISMessage:
             f"dROT={self.dROT})>"
         ) 
 
+    def __hash__(self) -> int:
+        return hash(self.timestamp)
+    
+    def __eq__(self, other: AISMessage) -> bool:
+        return self.timestamp == other.timestamp
+
 class ShipType(Enum):
     """
     Dataclass to store the type of vessel
