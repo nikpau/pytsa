@@ -64,7 +64,19 @@ class AISMessage:
             return None
         else:
             return sign * (rot / 4.733)**2
-        
+    
+    def __repr__(self) -> str:
+        return (
+            f"<AISMessage("
+            f"sender={self.sender},"
+            f"timestamp={self.timestamp},"
+            f"lat={self.lat},"
+            f"lon={self.lon},"
+            f"COG={self.COG},"
+            f"SOG={self.SOG},"
+            f"ROT={self.ROT},"
+            f"dROT={self.dROT})>"
+        ) 
 
 class ShipType(Enum):
     """
