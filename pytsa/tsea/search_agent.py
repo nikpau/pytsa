@@ -419,6 +419,7 @@ class SearchAgent:
             )
             ctr += 1
             for track in tgt.tracks:
+                track.sort(key=lambda x: x.timestamp)
                 _itracks = [] # Intermediary track
                 tstartidx = 0
                 for i, (msg_t0,msg_t1) in enumerate(pairwise(track)):
