@@ -372,7 +372,7 @@ class SearchAgent:
         if not skip_tsplit:
             targets = self._determine_split_points(targets)
         else: # Sort by timestamp
-            targets = self._sort_by_timestamp(targets)
+            targets = self._rm_dups(targets)
         return targets
         
     def _rm_dups(self, targets: Targets) -> Targets:
