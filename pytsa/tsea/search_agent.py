@@ -383,7 +383,7 @@ class SearchAgent:
         """
         for tgt in targets.values():
             tgt.tracks = [
-                list(set(track)).sort(key=lambda x: x.timestamp) 
+                sorted(list(set(track)),key=lambda x: x.timestamp) 
                 for track in tgt.tracks
             ]
         return targets
