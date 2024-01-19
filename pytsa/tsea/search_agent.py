@@ -369,10 +369,9 @@ class SearchAgent:
                 )
                 singles.extend(res)
         targets = self._join_tracks(*singles)
+        targets = self._rm_dups(targets)
         if not skip_tsplit:
             targets = self._determine_split_points(targets)
-        else: # Sort by timestamp
-            targets = self._rm_dups(targets)
         return targets
         
     def _rm_dups(self, targets: Targets) -> Targets:
@@ -404,15 +403,9 @@ class SearchAgent:
                 if mmsi not in targets:
                     targets[mmsi] = tgt
                 else:
-                    # We check again if the first message of the
-                    # second track is a duplicate of the last message
-                    # of the first track. This can happen if the 
-                    # duplicate message was exactly cut off by 
-                    # the chunking process, and thus was not removed
-                    # by the `_impl_construct_target_vessel` method.
-                    if targets[mmsi].tracks[0][-1].timestamp == tgt.tracks[0][0].timestamp:
-                        tgt.tracks[0].pop(0)
-                    targets[mmsi].tracks[0].extend(tgt.tracks[0])
+                    targets[mmsi].tracks[0].extend(
+                        tgt.tracks[0]
+                    )
         return targets
                     
     def _determine_split_points(self,
@@ -433,9 +426,6 @@ class SearchAgent:
                 _itracks = [] # Intermediary track
                 tstartidx = 0
                 for i, (msg_t0,msg_t1) in enumerate(pairwise(track)):
-                    if msg_t0.timestamp == msg_t1.timestamp:
-                        track.remove(msg_t1)
-                        continue
                     if split.is_split_point(msg_t0,msg_t1):
                         _itracks.append(track[tstartidx:i+1])
                         tstartidx = i+1
