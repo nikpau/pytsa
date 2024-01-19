@@ -376,15 +376,20 @@ class SearchAgent:
         
     def _rm_dups(self, targets: Targets) -> Targets:
         """
-        Remove duplicate timestamps from the tracks
+        Remove duplicate timestamps from the track
         of the given target ships and return the
         time-sorted tracks.
+        
+        It is assumed that each target only has
+        a single track.
         """
         for tgt in targets.values():
             tgt.tracks = [
-                sorted(list(set(track)),key=lambda x: x.timestamp) 
-                for track in tgt.tracks
-            ]
+                sorted(
+                    list(set(tgt.tracks[0])),
+                    key=lambda x: x.timestamp
+                )
+            ] 
         return targets
     
     def _join_tracks(self,
