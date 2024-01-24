@@ -574,49 +574,6 @@ class SearchAgent:
             speed * np.sin(np.deg2rad(course)) # Lateral component
         )
     
-    def _speed_correction(self,
-                          targets: Targets) -> Targets:
-        """
-        Speed correction after 10.1016/j.aap.2011.05.022
-        """
-        for target in targets.values():
-            for msg_t0,msg_t1 in pairwise(target.tracks):
-                tms = _time_mean_speed(msg_t0,msg_t1)
-                lower_bound = msg_t0.SOG - (msg_t1.SOG - msg_t0.SOG)
-                upper_bound = msg_t1.SOG + (msg_t1.SOG - msg_t0.SOG)
-                if not lower_bound < tms < upper_bound:
-                    self._n_speed_correction += 1
-                    logger.warn(
-                        f"Speed correction for MMSI {target.mmsi} "
-                        f"at {msg_t1.timestamp}"
-                    )
-                    msg_t1.SOG = tms
-
-    def _position_correction(self,
-                             targets: Targets) -> Targets:
-        """
-        Position correction after 10.1016/j.aap.2011.05.022
-        """
-        for target in targets.values():
-            for msg_t0,msg_t1 in pairwise(target.tracks):
-                dt = (msg_t1.timestamp - msg_t0.timestamp)
-                sog_lon, sog_lat = self._break_down_velocity(msg_t0.SOG,msg_t0.COG)
-                lont1 = msg_t0.lon + (sog_lon *dt)
-                latt1 = msg_t0.lat + (sog_lat *dt)
-                
-                est_pos = np.sqrt(
-                    (lont1-msg_t1.lon)**2 + (latt1-msg_t1.lat)**2
-                )
-                if est_pos <= 0.5*(msg_t1.SOG-msg_t0.SOG)*dt:
-                    self._n_position_correction += 1
-                    logger.warn(
-                        f"Position correction for MMSI {target.mmsi} "
-                        f"at {msg_t1.timestamp}"
-                    )
-                    msg_t1.lon = lont1
-                    msg_t1.lat = latt1
-
-    
     def _overlaps_search_date(self, 
                               track: list[AISMessage], 
                               tpos: TimePosition) -> bool:
@@ -644,13 +601,3 @@ class SearchAgent:
             (df[BaseColumns.TIMESTAMP.value] < (date+dt))
         )
         return df.loc[mask]
-    
-def _time_mean_speed(msg_t0: AISMessage,msg_t1: AISMessage) -> float:
-    """
-    Calculate the time-mean speed between two AIS Messages.
-    """
-    lat_offset = (msg_t1.lat - msg_t0.lat)**2
-    lon_offset = (msg_t1.lon - msg_t0.lon)**2
-    time_offset = (msg_t1.timestamp - msg_t0.timestamp) # in seconds
-    tms = np.sqrt(lat_offset + lon_offset) / (time_offset / 60 / 60) #[deg/h]
-    return tms

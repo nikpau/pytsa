@@ -38,33 +38,7 @@ class AISMessage:
     SOG: float # Speed over ground [knots]
     ROT: float = None # Rate of turn [degrees/minute]
     dROT: float = None # Change of ROT [degrees/minute²]
-    
-    # Fields for Trajectory Clustering ------------------
-    _cluster_type: str = "" # ["EN","EX","PO"]
-    _label_group: Union[int,None] = None
 
-    def __post_init__(self) -> None:
-
-        self.as_array = np.array(
-            [self.lat,self.lon,self.COG,self.SOG]
-        ).reshape(1,-1)
-        self.ROT = self._rot_handler(self.ROT)
-    
-    def _rot_handler(self, rot: float) -> float:
-        """
-        Handles the Rate of Turn (ROT) value
-        """
-        try: 
-            rot = float(rot) 
-        except: 
-            return None
-        
-        sign = np.sign(rot)
-        if abs(rot) == 127 or abs(rot) == 128:
-            return None
-        else:
-            return sign * (rot / 4.733)**2
-    
     def __repr__(self) -> str:
         return (
             f"<AISMessage("
@@ -217,12 +191,9 @@ class TimePosition(Position):
         self.lat = lat
         self.lon = lon
 
-        self.as_array: List[float] = field(default=list)
         self.timestamp = self._validate_timestamp()
         self.timestamp = int(self.timestamp.timestamp())
 
-        self.as_array = [self.timestamp,self.lat,self.lon]
-        
     def _validate_timestamp(self) -> datetime:
         if isinstance(self.timestamp,datetime):
             return self.timestamp
