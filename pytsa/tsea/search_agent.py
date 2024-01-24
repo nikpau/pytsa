@@ -554,14 +554,6 @@ class SearchAgent:
                     to_keep.append(track)
             tgt.tracks = to_keep
     
-    def _corrections(self, targets: Targets) -> Targets:
-        """
-        Perform corrections on the given targets.
-        """
-        self._speed_correction(targets)
-        self._position_correction(targets)
-        return targets
-    
     def _break_down_velocity(self,
                              speed: float,
                              course: float) -> tuple[float,float]:
