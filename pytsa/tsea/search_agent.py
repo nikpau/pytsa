@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 from typing import Callable, List, Union
 from more_itertools import pairwise
@@ -20,10 +19,6 @@ from ..decode.filedescriptor import (
 from .targetship import TargetShip, AISMessage, InterpolationError
 from ..utils import DataLoader
 
-# Exceptions
-class FileLoadingError(Exception):
-    pass
-
 # Type aliases
 MMSI = int
 Targets = dict[MMSI,TargetShip]
@@ -32,6 +27,122 @@ def _identity(x):
     return x
 
 
+class NeighborhoodTreeSearch:
+    """
+    A class for performing neighborhood searches 
+    on AIS message data using a kd-tree.
+
+    This class takes AIS messages, filters them 
+    based on a time window, and uses a kd-tree
+    for efficient spatial searches to find neighboring 
+    ships within a specified search radius.
+
+    Attributes:
+        `data` (DataLoader): Instance of DataLoader 
+                             to load AIS message data.
+        `time_delta` (int): Time delta in minutes for 
+                            filtering messages around a 
+                            specific time.
+        `max_tgt_ships` (int): Maximum number of target 
+                               ships to return in the 
+                               neighborhood search.
+
+    Methods:
+        `get_neighbors`: Retrieves neighboring AIS messages 
+                         within a specified search radius.
+    """
+    def __init__(self, 
+                 data_loader: DataLoader,
+                 time_delta: int,
+                 max_tgt_ships: int) -> None:
+        
+        self.data = data_loader # Load data into memory
+        self.time_delta = time_delta
+        self.max_tgt_ships = max_tgt_ships
+    
+    def _build_kd_tree(self, data: pd.DataFrame) -> cKDTree:
+        """
+        Private method to build a kd-tree from latitude 
+        and longitude columns of a pandas DataFrame.
+
+        Args:
+            `data` (pd.DataFrame): DataFrame containing 
+                                   latitude and longitude data.
+
+        Returns:
+            `cKDTree`: A scipy cKDTree object built from 
+                       the latitude and longitude data.
+
+        Raises:
+            AssertionError: If the input DataFrame lacks 
+                            latitude or longitude columns.
+        """
+        assert Msg12318Columns.LAT.value in data and Msg12318Columns.LON.value in data, \
+            "Input dataframe has no `lat` or `lon` columns"
+        lat=data[Msg12318Columns.LAT.value].values
+        lon=data[Msg12318Columns.LON.value].values
+        return cKDTree(np.column_stack((lat,lon)))
+            
+
+    def get_neighbors(self, 
+                      tpos: TimePosition, 
+                      search_radius: float = 20) -> pd.DataFrame:
+        """
+        Return all AIS messages that are no more than
+        `self.search_radius` [nm] away from the given position.
+
+        Args:
+            tpos: TimePosition object of postion and time for which 
+                    neighbors shall be found        
+
+        """
+        self.data.load() # Load data into memory
+        
+        filtered = self._time_filter(
+            self.data,tpos.timestamp,self.time_delta
+        )
+        # Check if filterd result is empty
+        if filtered.empty:
+            logger.warning("No AIS messages found in time-filtered cell.")
+            return filtered
+        tree = self._build_kd_tree(filtered)
+        # The conversion to degrees is only accurate at the equator.
+        # Everywhere else, the distances get smaller as lines of 
+        # Longitude are not parallel. Therefore, 
+        # this is a conservative estimate.
+        if not search_radius == np.inf:
+            sr =  search_radius/60 # Convert to degrees
+        else:
+            sr = np.inf
+        d, indices = tree.query(
+            tpos.position.as_list,
+            k=self.max_tgt_ships,
+            distance_upper_bound=sr
+        )
+        # Sort out any infinite distances
+        res = [indices[i] for i,j in enumerate(d) if j != float("inf")]
+
+        return filtered.iloc[res]
+    
+
+    def _time_filter(self, 
+                     df: pd.DataFrame, 
+                     date: UNIX_TIMESTAMP, 
+                     delta: int) -> pd.DataFrame:
+        """
+        Filter a pandas dataframe to only return 
+        rows whose `Timestamp` is not more than 
+        `delta` minutes apart from imput `date`.
+        """
+        assert BaseColumns.TIMESTAMP.value in df, "No `timestamp` column found"
+        timezone = df[BaseColumns.TIMESTAMP.value].iloc[0].tz.zone # Get timezone
+        date = pd.to_datetime(int(date),unit="s").tz_localize(timezone)
+        dt = pd.Timedelta(delta, unit="minutes")
+        mask = (
+            (df[BaseColumns.TIMESTAMP.value] > (date-dt)) & 
+            (df[BaseColumns.TIMESTAMP.value] < (date+dt))
+        )
+        return df.loc[mask]
 class SearchAgent:
     """
     Class searching for target ships
@@ -118,9 +229,15 @@ class SearchAgent:
         # for building and interpolating trajectories.
         self.time_delta = 30 # in minutes
 
-        # List of cell-indicies of all 
-        # currently buffered cells
-        self._buffered_cell_idx = []
+        self.neighborhood = NeighborhoodTreeSearch(
+            self.data_loader,
+            self.time_delta,
+            self.max_tgt_ships
+        )
+        
+        self.constructor = TargetShipConstructor(
+            self.data_loader
+        )
         
         # Flag indicating whether the input data
         # is already decoded or not
@@ -138,9 +255,6 @@ class SearchAgent:
         # Number of times, the _position_correction function
         # was called
         self._n_position_correction = 0
-        
-        # Indicator whether the input data is in memory
-        self._is_bufferd = False
         
     def get_ships(self, 
                   tpos: TimePosition, 
@@ -164,21 +278,14 @@ class SearchAgent:
         """
         assert interpolation in ["linear","spline","auto"], \
             "Interpolation method must be either 'linear', 'spline' or 'auto'"
-        if not self._is_bufferd:
-            self._buffer_data()
         # Get neighbors
-        neigbors = self._get_neighbors(tpos,search_radius)
-        tgts = self.construct_target_vessels(neigbors,tpos,True,njobs=1)
+        neigbors = self.neighborhood.get_neighbors(tpos,search_radius)
+        tgts = self.constructor.construct_target_vessels(
+            neigbors,tpos,True,njobs=1
+        )
         # Contruct Splines for all target ships
         tgts = self._interpolate_trajectories(tgts,mode=interpolation)
         return tgts
-    
-    def _buffer_data(self) -> None:
-        """
-        Load all AIS messages into memory.
-        """
-        self.data_loader.load()
-        self._is_bufferd = True
     
     def get_all_ships(self,
                       njobs: int = 4, 
@@ -190,7 +297,7 @@ class SearchAgent:
         assert njobs > 1, \
             ("Single process mode requires `tpos` and `neighbors` to be set.\n"
             "For live vessel tracking use the get_ships() method.")
-        return self.construct_target_vessels(
+        return self.constructor.construct_target_vessels(
             None,None,False,njobs,skip_tsplit
         )
     
@@ -207,97 +314,28 @@ class SearchAgent:
                 logger.warn(e)
                 del tgts[mmsi]
         return tgts
-    
-    def _build_kd_tree(self, data: pd.DataFrame) -> cKDTree:
-        """
-        Build a kd-tree object from the `Lat` and `Lon` 
-        columns of a pandas dataframe.
-        """
-        assert Msg12318Columns.LAT.value in data and Msg12318Columns.LON.value in data, \
-            "Input dataframe has no `lat` or `lon` columns"
-        lat=data[Msg12318Columns.LAT.value].values
-        lon=data[Msg12318Columns.LON.value].values
-        return cKDTree(np.column_stack((lat,lon)))
-            
+
+
+class TargetShipConstructor:
+    """
+    A class for constructing TargetShip 
+    objects from raw AIS messages.
+
+    Attributes:
+        `data_loader`: 
+            An instance of the `pytsa.utils.DataLoader` 
+            class used to load AIS message data.
+
+    Methods:
+        `construct_target_vessels`: 
+            Constructs TargetVessel objects from 
+            a given DataFrame.
+    """
+    def __init__(self, data_loader: DataLoader) -> None:
         
-    def _get_ship_type(self, 
-                       static_msgs: pd.DataFrame,
-                       mmsi: int) -> list[int]:
-        """
-        Return the ship type of a given MMSI number.
+        self.data_loader = data_loader
 
-        If more than one ship type is found, the first
-        one is returned and a warning is logged.
-        """
-        st = static_msgs[static_msgs[Msg5Columns.MMSI.value] == mmsi]\
-            [Msg5Columns.SHIPTYPE.value].values
-        st:np.ndarray = np.unique(st)
-        if st.size > 1:
-            logger.warning(
-                f"More than one ship type found for MMSI {mmsi}. "
-                f"Found {st}.")
-            return st
-        else:
-            return list(st)
 
-    def _get_ship_length(self, 
-                         static_msgs: pd.DataFrame,
-                         mmsi: int) -> int:
-        """
-        Return the ship length of a given MMSI number.
-
-        If more than one ship length is found, the largest
-        one is returned and a warning is logged.
-        """
-        raw = static_msgs[static_msgs[Msg5Columns.MMSI.value] == mmsi]\
-            [[Msg5Columns.TO_BOW.value,Msg5Columns.TO_STERN.value]].values
-        sl:np.ndarray = np.sum(raw,axis=1)
-        sl = np.unique(sl)
-        if sl.size > 1:
-            logger.warning(
-                f"More than one ship length found for MMSI {mmsi}. "
-                f"Found {sl}. Returning {max(sl)}.")
-            return max(sl)
-        return sl
-
-    def _get_neighbors(self, 
-                       tpos: TimePosition, 
-                       search_radius: float = 20) -> pd.DataFrame:
-        """
-        Return all AIS messages that are no more than
-        `self.search_radius` [nm] away from the given position.
-
-        Args:
-            tpos: TimePosition object of postion and time for which 
-                    neighbors shall be found        
-
-        """
-        filtered = self._time_filter(
-            self.data_loader.dynamic_data,tpos.timestamp,self.time_delta
-        )
-        # Check if filterd result is empty
-        if filtered.empty:
-            logger.warning("No AIS messages found in time-filtered cell.")
-            return filtered
-        tree = self._build_kd_tree(filtered)
-        # The conversion to degrees is only accurate at the equator.
-        # Everywhere else, the distances get smaller as lines of 
-        # Longitude are not parallel. Therefore, 
-        # this is a conservative estimate.
-        if not search_radius == np.inf:
-            sr =  search_radius/60 # Convert to degrees
-        else:
-            sr = np.inf
-        d, indices = tree.query(
-            tpos.position.as_list,
-            k=self.max_tgt_ships,
-            distance_upper_bound=sr
-        )
-        # Sort out any infinite distances
-        res = [indices[i] for i,j in enumerate(d) if j != float("inf")]
-
-        return filtered.iloc[res]
-    
     def _distribute(self, df: pd.DataFrame) -> list[pd.DataFrame]:
         """
         Distribute a given dataframe into smaller
@@ -520,7 +558,7 @@ class SearchAgent:
         from a given dataframe.
         """
         if njobs == 1:
-            if tpos is None or neighbors is  None:
+            if tpos is None or neighbors is None:
                 raise ValueError(
                     "Single process mode requires `tpos` and `neighbors` to be set.\n"
                     "For extracting all target ships, use `njobs > 1`.")
@@ -575,21 +613,42 @@ class SearchAgent:
         """
         return (track[0].timestamp < tpos.timestamp < track[-1].timestamp)
 
-    def _time_filter(self, 
-                     df: pd.DataFrame, 
-                     date: UNIX_TIMESTAMP, 
-                     delta: int) -> pd.DataFrame:
+    def _get_ship_type(self, 
+                       static_msgs: pd.DataFrame,
+                       mmsi: int) -> list[int]:
         """
-        Filter a pandas dataframe to only return 
-        rows whose `Timestamp` is not more than 
-        `delta` minutes apart from imput `date`.
+        Return the ship type of a given MMSI number.
+
+        If more than one ship type is found, the first
+        one is returned and a warning is logged.
         """
-        assert BaseColumns.TIMESTAMP.value in df, "No `timestamp` column found"
-        timezone = df[BaseColumns.TIMESTAMP.value].iloc[0].tz.zone # Get timezone
-        date = pd.to_datetime(int(date),unit="s").tz_localize(timezone)
-        dt = pd.Timedelta(delta, unit="minutes")
-        mask = (
-            (df[BaseColumns.TIMESTAMP.value] > (date-dt)) & 
-            (df[BaseColumns.TIMESTAMP.value] < (date+dt))
-        )
-        return df.loc[mask]
+        st = static_msgs[static_msgs[Msg5Columns.MMSI.value] == mmsi]\
+            [Msg5Columns.SHIPTYPE.value].values
+        st:np.ndarray = np.unique(st)
+        if st.size > 1:
+            logger.warning(
+                f"More than one ship type found for MMSI {mmsi}. "
+                f"Found {st}.")
+            return st
+        else:
+            return list(st)
+
+    def _get_ship_length(self, 
+                         static_msgs: pd.DataFrame,
+                         mmsi: int) -> int:
+        """
+        Return the ship length of a given MMSI number.
+
+        If more than one ship length is found, the largest
+        one is returned and a warning is logged.
+        """
+        raw = static_msgs[static_msgs[Msg5Columns.MMSI.value] == mmsi]\
+            [[Msg5Columns.TO_BOW.value,Msg5Columns.TO_STERN.value]].values
+        sl:np.ndarray = np.sum(raw,axis=1)
+        sl = np.unique(sl)
+        if sl.size > 1:
+            logger.warning(
+                f"More than one ship length found for MMSI {mmsi}. "
+                f"Found {sl}. Returning {max(sl)}.")
+            return max(sl)
+        return sl
