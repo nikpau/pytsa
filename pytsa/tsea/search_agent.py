@@ -90,7 +90,7 @@ class SearchAgent:
             static_paths = static_paths
             static_paths = [Path(p) for p in static_paths]
             
-        self.loader = DataLoader(
+        self.data_loader = DataLoader(
             dynamic_paths,
             static_paths,
             preprocessor
@@ -177,7 +177,7 @@ class SearchAgent:
         """
         Load all AIS messages into memory.
         """
-        self.loader.load()
+        self.data_loader.load()
         self._is_bufferd = True
     
     def get_all_ships(self,
@@ -273,7 +273,7 @@ class SearchAgent:
 
         """
         filtered = self._time_filter(
-            self.loader.dynamic_data,tpos.timestamp,self.time_delta
+            self.data_loader.dynamic_data,tpos.timestamp,self.time_delta
         )
         # Check if filterd result is empty
         if filtered.empty:
@@ -361,7 +361,7 @@ class SearchAgent:
         """
         singles: list[Targets] = []
         with mp.Pool(njobs) as pool:
-            for dyn, stat in self.loader.iterate_chunks():
+            for dyn, stat in self.data_loader.iterate_chunks():
                 single_frames = self._distribute(dyn)
                 res = pool.starmap(
                     self._impl_construct_target_vessel,
@@ -487,8 +487,8 @@ class SearchAgent:
                 targets[mmsi] = TargetShip(
                     ts = tpos.timestamp if tpos is not None else None,
                     mmsi=mmsi,
-                    ship_type=self._get_ship_type(self.loader.static_data,mmsi),
-                    length=self._get_ship_length(self.loader.static_data,mmsi),
+                    ship_type=self._get_ship_type(self.data_loader.static_data,mmsi),
+                    length=self._get_ship_length(self.data_loader.static_data,mmsi),
                     tracks=[[msg]]
                 )
             else:
