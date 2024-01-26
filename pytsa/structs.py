@@ -53,10 +53,21 @@ class AISMessage:
         ) 
 
     def __hash__(self) -> int:
-        return hash(self.timestamp)
+        """
+        Timestamp and lat/lon are used to uniquely
+        identify an AIS message.
+        """
+        return hash(self.lat + self.lon)
     
     def __eq__(self, other: AISMessage) -> bool:
-        return self.timestamp == other.timestamp
+        """
+        Two AIS messages are equal if they have the same
+        timestamp or the same lat/lon.
+        """
+        return self.lat == other.lat and self.lon == other.lon
+    
+    def __ne__(self, other: AISMessage) -> bool:
+        return not self.__eq__(other)
 
 class ShipType(Enum):
     """
