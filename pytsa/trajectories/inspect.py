@@ -150,8 +150,8 @@ def angle_between(msg_t0: AISMessage,
         Return the angle between the track
         of three AIS Messages.
         """
-        _cos = cosine_of_angle_between(msg_t0,msg_t1,msg_t2)
-        return np.arccos(_cos)
+        _cos = cosine_of_angle_between(msg_t0,msg_t1,msg_t2)        
+        return np.arccos(round(_cos,6)) # Round to avoid floating point errors
     
 def average_smoothness(track: list[AISMessage]) -> float:
     """
