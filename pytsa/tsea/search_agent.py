@@ -414,20 +414,25 @@ class TargetShipConstructor:
         
     def _rm_dups(self, targets: Targets) -> Targets:
         """
-        Remove duplicate timestamps from the track
-        of the given target ships and return the
-        time-sorted tracks.
+        Remove duplicate positions and timestamps.
+        Duplicate positions are removed by the 
+        set operation, as equality of AISMessage
+        objects is defined by their lat/lon.
         
-        It is assumed that each target only has
-        a single track.
+        Duplicate timestamps are removed by sorting
+        the list of AISMessage objects by their
+        timestamp and then removing all but the
+        first occurence of a timestamp.
         """
         for tgt in targets.values():
-            tgt.tracks = [
-                sorted(
-                    list(set(tgt.tracks[0])),
-                    key=lambda x: x.timestamp
-                )
-            ] 
+            # Rm pos dups
+            rmpos = list(set(tgt.tracks[0]))
+            # Check for timestamp dups
+            ts_sorted_idx = np.unique(
+                [msg.timestamp for msg in rmpos],
+                return_index=True)[1]
+            tgt.tracks[0] = [rmpos[i] for i in ts_sorted_idx]
+            
         return targets
     
     def _join_tracks(self,
