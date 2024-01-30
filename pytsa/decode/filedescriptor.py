@@ -18,7 +18,7 @@ class BaseColumns(Enum):
     column names.
     """
     __order__ = (
-        "MMSI TIMESTAMP MESSAGE_ID "
+        "TIMESTAMP MESSAGE_ID "
         "RAW_MESSAGE RAW_MESSAGE1 "
         "RAW_MESSAGE2"
     )
