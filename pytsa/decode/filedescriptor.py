@@ -17,6 +17,11 @@ class BaseColumns(Enum):
     must feature the following identical 
     column names.
     """
+    __order__ = (
+        "MMSI TIMESTAMP MESSAGE_ID "
+        "RAW_MESSAGE RAW_MESSAGE1 "
+        "RAW_MESSAGE2"
+    )
     TIMESTAMP: str = "timestamp"
     MESSAGE_ID: str = "message_id"
     RAW_MESSAGE: str = "raw_message"
@@ -28,6 +33,10 @@ class Msg12318Columns(Enum):
     Data columns for message 1,2,3 and 18
     source files.
     """
+    __order__ = (
+        "MMSI LAT LON SPEED COURSE "
+        "TURN"
+    )
     MMSI: str = "MMSI"
     LAT: str = "lat"
     LON: str = "lon"
@@ -40,6 +49,10 @@ class Msg5Columns(Enum):
     Data columns for message 5
     source files. 
     """
+    __order__ = (
+        "MMSI SHIPTYPE SHIPNAME CALLSIGN "
+        "TO_BOW TO_STERN TO_PORT TO_STARBOARD"
+    )
     MMSI: str = "MMSI"
     SHIPTYPE: str = "ship_type"
     SHIPNAME: str = "shipname"
