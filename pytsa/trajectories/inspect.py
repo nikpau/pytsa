@@ -31,6 +31,9 @@ class Inspector:
         dict[MMSI,TargetVessel]
     and will most likely be the output of the
     :meth:`SearchAgent.get_all_ships()` method.
+    
+    For how to create a recipe, see the 
+    :mod:`pytsa.trajectories.rules` module.
     """
     def __init__(self, data: Targets, recipe: Recipe) -> None:
         self.data = data
@@ -47,6 +50,11 @@ class Inspector:
         The accepted and rejected dictionaries can contain the same MMSIs, 
         if the target ship has multiple tracks, and only some of them
         meet the criteria.
+
+        **NOTE**:
+        n > 1 is only recommended for smaller datasets, as the overhead
+        of splitting the data into chunks and recombining it can be
+        significant.
         
         """
         if njobs == 1:

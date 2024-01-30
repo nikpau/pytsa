@@ -1,5 +1,34 @@
-"""
-Module for defining trajectory splitting rules.
+__doc__="""Module for defining trajectory splitting rules.
+All rule functions must have the following signature:
+    def rule_name(track: list[AISMessage], *args, **kwargs) -> bool:
+        ...
+        
+Rules must be defined such that they return True if the track is to be
+rejected, and False if the track is to be accepted. 
+        
+To make a recipe for the TrajectorySplitter class, you are expected to
+fix the rule function's arguments, such that only a one-argument function
+remains. It is recommended to use the `functools.partial` function for this.
+        
+Once you have defined a set of rule functions, you can create a recipe
+for the TrajectorySplitter class by passing them to the Recipe class.
+
+Example:
+    from functools import partial
+    from pytsa.trajectories import rules
+    
+    # Define a recipe
+    recipe = rules.Recipe(
+        partial(rules.too_few_obs, n=100),
+        partial(rules.too_small_span, span=0.1)
+    )
+    
+    # Cook the recipe
+    cooked = recipe.cook()
+    
+The `cooked` function can now be passed to the TrajectorySplitter class
+to perform the trajectory splitting.
+
 """
 from typing import Callable
 import numpy as np
@@ -56,39 +85,7 @@ def _check_signature(func) -> None:
             f"got {sig.return_annotation}"
         )
 
-# Rule functions---------------------------------------------------------------
-"""
-All rule functions must have the following signature:
-    def rule_name(track: list[AISMessage], *args, **kwargs) -> bool:
-        ...
-        
-Rules must be defined such that they return True if the track is to be
-rejected, and False if the track is to be accepted. 
-        
-To make a recipe for the TrajectorySplitter class, you are expected to
-fix the rule function's arguments, such that only a one-argument function
-remains. It is recommended to use the `functools.partial` function for this.
-        
-Once you have defined a set of rule functions, you can create a recipe
-for the TrajectorySplitter class by passing them to the Recipe class.
-
-Example:
-    from functools import partial
-    from pytsa.trajectories import rules
-    
-    # Define a recipe
-    recipe = rules.Recipe(
-        partial(rules.too_few_obs, n=100),
-        partial(rules.too_small_span, span=0.1)
-    )
-    
-    # Cook the recipe
-    cooked = recipe.cook()
-    
-The `cooked` function can now be passed to the TrajectorySplitter class
-to perform the trajectory splitting.
-
-"""
+# Rules -----------------------------------------------------------------------
 
 def too_few_obs(track: list[AISMessage], n: int) -> bool:
     """
@@ -120,6 +117,7 @@ def too_small_span(track: list[AISMessage], span: float) -> bool:
     """
     Return True if the lateral and longitudinal span
     of the track of the given vessel is smaller than `span`.
+    (Not used in the paper)
     """
     lat_span = np.ptp([v.lat for v in track])
     lon_span = np.ptp([v.lon for v in track])
