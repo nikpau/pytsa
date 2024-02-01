@@ -208,5 +208,5 @@ def average_smoothness(track: list[AISMessage]) -> float:
         )
     for i in range(1,len(track)-1):
         ang = angle_between(track[i-1],track[i],track[i+1])
-        angles.append(ang / np.pi)
+        angles.append((ang / np.pi)**2)
     return np.mean(angles)
