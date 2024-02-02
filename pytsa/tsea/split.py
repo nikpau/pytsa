@@ -6,7 +6,7 @@ import pickle
 
 from ..structs import AISMessage
 from .. import utils
-from ..quantile_data import __path__ as _DATA_DIR
+from ..data.quantiles import __path__ as _DATA_DIR
 
 # Load empirical quantiles
 # from pickle file. The quantiles
