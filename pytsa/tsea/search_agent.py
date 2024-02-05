@@ -96,10 +96,11 @@ class NeighborhoodTreeSearch:
                     neighbors shall be found        
 
         """
-        self.data.load() # Load data into memory
+        if not self.data.loaded:
+            self.data.load() # Load data into memory
         
         filtered = self._time_filter(
-            self.data,tpos.timestamp,self.time_delta
+            self.data.dynamic_data,tpos.timestamp,self.time_delta
         )
         # Check if filterd result is empty
         if filtered.empty:

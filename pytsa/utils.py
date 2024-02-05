@@ -129,6 +129,11 @@ class DataLoader:
         self.sdyn, self.sstat = self.align_data_files(
             dynamic_paths, static_paths
         )
+        
+        # Flag to indicate if the data has
+        # been loaded into memory entirely.
+        # Only used for the `load` method.
+        self.loaded = False
     
     @staticmethod
     def _date_transformer(datefile: Path) -> datetime:
@@ -232,7 +237,7 @@ class DataLoader:
         """
         self.dynamic_data = pd.DataFrame()
         self.static_data = pd.DataFrame()
-        for stat_path, dyn_path in zip(self.sdyn,self.sstat):
+        for dyn_path, stat_path in zip(self.sdyn,self.sstat):
             logger.info(f"Loading {stat_path.stem} and {dyn_path.stem}")
             d = pd.read_csv(dyn_path,sep=",",usecols=self.dynamic_columns)
             d = self._dynamic_preprocessor(d)
@@ -240,6 +245,8 @@ class DataLoader:
             self.dynamic_data = pd.concat([self.dynamic_data,d])
             self.static_data = pd.concat([self.static_data,s])
         logger.info("Done.")
+        
+        self.loaded = True
     
     def iterate_chunks(self,
                    decode: bool = False
