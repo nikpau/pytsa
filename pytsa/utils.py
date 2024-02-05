@@ -2,10 +2,14 @@
 Utility functions for pytsa
 """
 from datetime import datetime
+from itertools import cycle
 import math
 from pathlib import Path
+from threading import Thread
+import time
 from typing import Callable, Generator
 import pandas as pd
+import psutil
 import vincenty as _vincenty
 import ciso8601
 from .logger import logger
@@ -288,3 +292,94 @@ class DataLoader:
                     )
                     dc = self._dynamic_preprocessor(dc)            
                     yield dc, sc
+
+# DEPRECATED v ================================================================
+class Loader:
+    def __init__(self, bb):
+        """
+        A loader-like context manager
+
+        Args:
+            desc (str, optional): The loader's description. Defaults to "Loading...".
+            end (str, optional): Final print. Defaults to "Done!".
+            timeout (float, optional): Sleep time between prints. Defaults to 0.1.
+        """
+        self.desc = (
+            f"Buffering area from {bb.LATMIN:.3f}°N-{bb.LATMAX:.3f}°N "
+            f"and {bb.LONMIN:.3f}°E-{bb.LONMAX:.3f}°E"
+        )
+        self.timeout = 0.1
+
+        self._thread = Thread(target=self._animate, daemon=True)
+        self.steps = ["⢿", "⣻", "⣽", "⣾", "⣷", "⣯", "⣟", "⡿"]
+        self.done = False
+
+    def start(self):
+        self.t_start = time.perf_counter()
+        self._thread.start()
+        return self
+
+    def _animate(self):
+        for c in cycle(self.steps):
+            if self.done:
+                break
+            print(f"{self.desc} {c}", flush=True, end="\r")
+            time.sleep(self.timeout)
+
+    def __enter__(self):
+        self.start()
+
+    def stop(self):
+        self.done = True
+        print(" "*100, end = "\r")
+        logger.info(f"{self.desc}")
+        self.t_end = time.perf_counter()
+        logger.info(f"Cell Buffering completed in [{(self.t_end-self.t_start):.1f} s]")
+
+    def __exit__(self, exc_type, exc_value, tb):
+        # handle exceptions with those variables ^
+        self.stop()
+
+# Context manager that continuously shows memory usage
+# while running the code inside the context.
+class MemoryLoader:
+    def __init__(self):
+        self.timeout = 0.2
+
+        self._thread = Thread(target=self._show_memory_usage, daemon=True)
+        self.done = False
+
+    def start(self):
+        self.t_start = time.perf_counter()
+        self._thread.start()
+        return self
+
+    def _show_memory_usage(self):
+        """
+        Prints memory usage every `timeout` seconds
+        """
+        while True:
+            if self.done:
+                break
+            print(
+                f"Memory usage: {psutil.virtual_memory().percent}% "
+                f"[{psutil.virtual_memory().used/1e9:.2f} GB]", 
+                end="\r")
+            time.sleep(self.timeout)
+
+    def __enter__(self):
+        self.start()
+
+    def stop(self):
+        self.done = True
+        print(" "*100, end = "\r")
+        self.t_end = time.perf_counter()
+        print(
+            f"Loading took {self.t_end - self.t_start:.2f} seconds \n"
+            f"Memory usage: {psutil.virtual_memory().percent}% "
+            f"[{psutil.virtual_memory().used/1e9:.2f} GB]"
+            )
+
+    def __exit__(self, exc_type, exc_value, tb):
+        # handle exceptions with those variables ^
+        self.stop()
