@@ -257,13 +257,14 @@ class SearchAgent:
         # was called
         self._n_position_correction = 0
         
-    def get_ships(self, 
+    def freeze(self, 
                   tpos: TimePosition, 
                   search_radius: float = 20, # in nautical miles
                   interpolation: str = "linear") -> Targets:
         """
-        Returns a list of target ships
-        present in the neighborhood of the given position. 
+        Freeze around a given position and time and return 
+        a list of target ships present in the neighborhood 
+        around the given position. 
         
         tpos: TimePosition object of agent for which 
                 neighbors shall be found
