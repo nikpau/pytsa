@@ -22,6 +22,7 @@ from ..utils import DataLoader
 # Type aliases
 MMSI = int
 Targets = dict[MMSI,TargetShip]
+Track = list[AISMessage]
 
 def _identity(x):
     return x
@@ -603,7 +604,7 @@ class TargetShipConstructor:
         )
     
     def _overlaps_search_date(self, 
-                              track: list[AISMessage], 
+                              track: Track, 
                               tpos: TimePosition) -> bool:
         """
         Return True if the track of the given vessel

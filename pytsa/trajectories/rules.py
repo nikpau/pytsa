@@ -1,6 +1,6 @@
 __doc__="""Module for defining trajectory splitting rules.
 All rule functions must have the following signature:
-    def rule_name(track: list[AISMessage], *args, **kwargs) -> bool:
+    def rule_name(track: Track, *args, **kwargs) -> bool:
         ...
         
 Rules must be defined such that they return True if the track is to be
@@ -35,7 +35,7 @@ import numpy as np
 from inspect import signature
 from functools import partial
 
-from ..structs import AISMessage
+from ..tsea.search_agent import Track
 
 class Recipe:
     """
@@ -45,20 +45,20 @@ class Recipe:
     This class is used to define a recipe for the TrajectorySplitter class.
     
     """
-    Rule = Callable[[list[AISMessage]], bool]
+    Rule = Callable[[Track], bool]
     def __init__(self, *funcs: Rule) -> None:
         self.funcs = funcs
         for func in self.funcs:
             _check_signature(func)
         
-    def cook(self) -> Callable[[list[AISMessage]], bool]:
+    def cook(self) -> Callable[[Track], bool]:
         """
         Cook the recipe into a function that can be passed to the
         TrajectorySplitter class.
         """
         return self.cooked
             
-    def cooked(self,track: list[AISMessage]) -> bool:
+    def cooked(self,track: Track) -> bool:
         return all(func(track) for func in self.funcs)
 
 # Signature checker-------------------------------------------------------------
@@ -74,10 +74,10 @@ def _check_signature(func) -> None:
             f"Expected a function with parameter `track` as first argument, "
             f"got {arg}"
         )
-    if sig.parameters["track"].annotation != list[AISMessage]:
+    if sig.parameters["track"].annotation != Track:
         raise TypeError(
             f"Expected a function with parameter `track` of type "
-            f"list[AISMessage], got {sig.parameters['track'].annotation}"
+            f"Track, got {sig.parameters['track'].annotation}"
         )
     if sig.return_annotation != bool:
         raise TypeError(
@@ -87,14 +87,14 @@ def _check_signature(func) -> None:
 
 # Rules -----------------------------------------------------------------------
 
-def too_few_obs(track: list[AISMessage], n: int) -> bool:
+def too_few_obs(track: Track, n: int) -> bool:
     """
     Return True if the length of the track of the given vessel
     is smaller than `n`.
     """
     return len(track) < n
 
-def spatial_deviation(track: list[AISMessage], sd: tuple | float) -> bool:
+def spatial_deviation(track: Track, sd: tuple | float) -> bool:
     """
     Return True if the summed standard deviation of lat/lon 
     of the track of the given vessel is smaller than `sd`,
@@ -113,7 +113,7 @@ def spatial_deviation(track: list[AISMessage], sd: tuple | float) -> bool:
     sdlat = np.sqrt(np.var([v.lat for v in track]))
     return lower <= sdlon + sdlat <= upper
 
-def too_small_span(track: list[AISMessage], span: float) -> bool:
+def too_small_span(track: Track, span: float) -> bool:
     """
     Return True if the lateral and longitudinal span
     of the track of the given vessel is smaller than `span`.

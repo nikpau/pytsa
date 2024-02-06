@@ -10,7 +10,7 @@ import multiprocessing as mp
 from copy import deepcopy
 
 from ..logger import logger
-from ..tsea.search_agent import Targets
+from ..tsea.search_agent import Targets, Track
 from ..tsea.targetship import TargetShip, AISMessage
 from .rules import Recipe
 
@@ -104,7 +104,7 @@ class Inspector:
     
     def reject_track(self,
                      vessel: TargetShip,
-                     track: list[AISMessage]) -> None:
+                     track: Track) -> None:
         """
         Reject a track.
         """
@@ -112,7 +112,7 @@ class Inspector:
         
     def accept_track(self,
                      vessel: TargetShip,
-                     track: list[AISMessage]) -> None:
+                     track: Track) -> None:
         """
         Accept a track.
         """
@@ -121,7 +121,7 @@ class Inspector:
     def _copy_track(self,
                     vessel: TargetShip, 
                     target: Targets,
-                    track: list[AISMessage]) -> None:
+                    track: Track) -> None:
         """
         Copy a track from one TargetVessel object to another,
         and delete it from the original.
@@ -161,7 +161,7 @@ def angle_between(msg_t0: AISMessage,
         _cos = cosine_of_angle_between(msg_t0,msg_t1,msg_t2)        
         return np.arccos(round(_cos,6)) # Round to avoid floating point errors
     
-def average_smoothness(track: list[AISMessage]) -> float:
+def average_smoothness(track: Track) -> float:
     """
     Calculate the average smoothness of a navigational 
     track.
@@ -183,7 +183,7 @@ def average_smoothness(track: list[AISMessage]) -> float:
     straight line).
 
     Parameters:
-    - track (list[AISMessage]): A list of AISMessage objects 
+    - track (Track): A list of AISMessage objects 
       representing the navigational path. Each AISMessage 
       contains positional data necessary for angle calculation.
 

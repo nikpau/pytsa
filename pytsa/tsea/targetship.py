@@ -7,16 +7,14 @@ evenly-sized grids
 """
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from typing import List, Union
 
 import numpy as np
-from matplotlib import pyplot as plt
-from matplotlib.gridspec import GridSpec
 from scipy.interpolate import InterpolatedUnivariateSpline, interp1d
 from ..structs import ShipType, AISMessage, MMSI
 from ..logger import logger
+from ..tsea.search_agent import Track
 
 # Type aliases
 Latitude = float
@@ -374,7 +372,7 @@ class TargetShip:
             return preds.T
             
     
-    def _is_in_interval(self, query: int, msgs: list[AISMessage]) -> bool:
+    def _is_in_interval(self, query: int, msgs: Track) -> bool:
         """
         Check if the query timestamp is within the
         given interval.
