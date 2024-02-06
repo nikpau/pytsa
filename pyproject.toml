@@ -1,12 +1,22 @@
 [tool.poetry]
 name = "pytsa"
 version = "2.1.0"
-description = "Toolbox for decoding and processing AIS Messages."
+description = "Toolbox for extracting trajectories and monitoring vessels from raw AIS records."
 authors = [
-    "Niklas Paulig <niklas.paulig@tu-dresden.de>"
+  {name="Niklas Paulig", email="niklas.paulig@tu-dresden.de"},
+]
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: OS Independent",
 ]
 readme = "README.md"
 packages = [{include = "pytsa"}]
+
+[project.urls]
+Homepage = "https://github.com/nikpau/pytsa"
+Issues = "https://github.com/nikpau/pytsa/issues"
 
 [tool.poetry.dependencies]
 python = "^3.10"    
@@ -20,8 +30,8 @@ scipy = "^1.7.1"
 utm  = "^0.7.0"
 vincenty = "^0.1.4"
 
-# [tool.poetry.scripts]
-# pytsa = "pytsa.__main__:main"
+[tool.setuptools.package-data]
+"pytsa.data.geometry" = ["*.json"]
 
 [build-system]
 requires = ["poetry-core"]
