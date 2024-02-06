@@ -258,9 +258,9 @@ class SearchAgent:
         self._n_position_correction = 0
         
     def freeze(self, 
-                  tpos: TimePosition, 
-                  search_radius: float = 20, # in nautical miles
-                  interpolation: str = "linear") -> Targets:
+               tpos: TimePosition, 
+               search_radius: float = 20, # in nautical miles
+               interpolation: str = "linear") -> Targets:
         """
         Freeze around a given position and time and return 
         a list of target ships present in the neighborhood 
@@ -281,28 +281,39 @@ class SearchAgent:
         assert interpolation in ["linear","spline","auto"], \
             "Interpolation method must be either 'linear', 'spline' or 'auto'"
         # Get neighbors
-        neigbors = self.neighborhood.get_neighbors(tpos,search_radius)
-        tgts = self.constructor.construct_target_vessels(
-            neigbors,tpos,True,njobs=1
-        )
+        neighbors = self.neighborhood.get_neighbors(tpos,search_radius)
+        tgts = self.constructor._sp_construct_target_vessels(neighbors,tpos,True)
         # Contruct Splines for all target ships
         tgts = self._interpolate_trajectories(tgts,mode=interpolation)
         return tgts
     
-    def get_all_ships(self,
-                      njobs: int = 4, 
-                      skip_tsplit: bool = False) -> Targets:
+    def extract_all(self,
+                    njobs: int = 4, 
+                    skip_tsplit: bool = False) -> Targets:
         """
-        Returns a dictionary of all target ships in the
-        frame of the search agent.
+        Extracts a dictionary of all target ships in the
+        frame of the search agent using the split-point
+        method as described in the paper. 
+        
+        Parameters:
+        ----------
+        njobs: int
+            Number of jobs to use for multiprocessing.
+        skip_tsplit: bool
+            If True, the split-point method is not used
+            to split the tracks of the target ships.
+            Instead, all vessels will only have one track,
+            containing all time-ordered AIS messages
+            comning from the same MMSI.
+            
+        Returns:
+        --------
+        dict: A dictionary of dict[MMSI,TargetShip]. 
         """
-        assert njobs > 1, \
-            ("Single process mode requires `tpos` and `neighbors` to be set.\n"
-            "For live vessel tracking use the get_ships() method.")
-        return self.constructor.construct_target_vessels(
-            None,None,False,njobs,skip_tsplit
+        return self.constructor._mp_construct_target_vessels(
+            njobs,skip_tsplit
         )
-    
+
     def _interpolate_trajectories(self, 
                            tgts: Targets,
                            mode: str = "auto") -> Targets:
@@ -553,26 +564,6 @@ class TargetShipConstructor:
             self._filter_overlapping(targets,tpos)
             
         return targets
-    
-    def construct_target_vessels(self,
-                                 neighbors: pd.DataFrame = None,
-                                 tpos: TimePosition = None, 
-                                 overlap: bool = False, 
-                                 njobs: int = 4,
-                                 skip_tsplit: bool = False) -> Targets:
-        """
-        Construct a dictionary of TargetVessel objects
-        from a given dataframe.
-        """
-        if njobs == 1:
-            if tpos is None or neighbors is None:
-                raise ValueError(
-                    "Single process mode requires `tpos` and `neighbors` to be set.\n"
-                    "For extracting all target ships, use `njobs > 1`.")
-            return self._sp_construct_target_vessels(neighbors,tpos,overlap)
-        else:
-            return self._mp_construct_target_vessels(njobs,skip_tsplit)
-        
     
     def _filter_overlapping(self, 
                             targets: Targets, 
