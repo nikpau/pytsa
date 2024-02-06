@@ -95,7 +95,7 @@ class DataLoader:
     """
     
     # Fraction of the file to load
-    chunkfrac = 0.3
+    chunkfrac = 1/3
     
     dynamic_columns = [
         BaseColumns.TIMESTAMP.value,
