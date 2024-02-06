@@ -18,7 +18,7 @@ Therefore, this module aims to provide a unified, open-source solution for extra
 ## Installation
 Install the package via pip:
 ```shell
-$ pip install git+https://github.com/nikpau/pytsa
+$ pip install pytsa-ais
 ```
 
 ## Usage
