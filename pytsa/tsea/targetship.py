@@ -12,7 +12,7 @@ from typing import List, Union
 
 import numpy as np
 from scipy.interpolate import InterpolatedUnivariateSpline, interp1d
-from ..structs import ShipType, AISMessage, MMSI, Track
+from ..structs import AISMessage, MMSI, Track
 from ..logger import logger
 
 # Type aliases
@@ -182,7 +182,7 @@ class TargetShip:
         ts: Union[int, None], 
         mmsi: MMSI, 
         tracks: List[List[AISMessage]],
-        ship_type: ShipType = None,
+        ship_type: list[int] = None,
         length: float = None,
         ) -> None:
         
