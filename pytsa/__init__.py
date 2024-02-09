@@ -9,7 +9,7 @@ import tomli, pathlib
 from . import __path__ as projpath
 
 # Parse version from pyproject.toml
-__ppj = pathlib.Path(projpath[0]).parent / "pyproject.toml"
+__ppj = pathlib.Path(projpath[0]) / "pyproject.toml"
 with open(__ppj,"rb") as tml:
     __v = tomli.load(tml)["tool"]["poetry"]["version"]
 
