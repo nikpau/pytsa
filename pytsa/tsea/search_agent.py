@@ -16,9 +16,11 @@ from . import split
 from ..decode.filedescriptor import (
     BaseColumns, Msg12318Columns, Msg5Columns
 )
-from .targetship import TargetShip, AISMessage, InterpolationError
+from .targetship import (
+    TargetShip, AISMessage, 
+    InterpolationError, Track, Targets
+)
 from ..utils import DataLoader
-from .._types import AISMessage, Targets, Track
 
 def _identity(x):
     return x

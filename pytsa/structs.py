@@ -69,6 +69,8 @@ class AISMessage:
     def __ne__(self, other: AISMessage) -> bool:
         return not self.__eq__(other)
 
+# Track type
+Track = list[AISMessage]
 class ShipType(Enum):
     """
     Dataclass to store the type of vessel

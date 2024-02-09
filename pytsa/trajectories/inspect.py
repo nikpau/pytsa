@@ -10,8 +10,8 @@ import multiprocessing as mp
 from copy import deepcopy
 
 from ..logger import logger
-from .._types import Targets, Track
-from ..tsea.targetship import TargetShip, AISMessage
+from ..structs import Track
+from ..tsea.targetship import TargetShip, AISMessage, Targets
 from .rules import Recipe
 
 def print_rejection_rate(n_rejected: int, n_total: int) -> None:

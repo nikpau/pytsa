@@ -12,9 +12,8 @@ from typing import List, Union
 
 import numpy as np
 from scipy.interpolate import InterpolatedUnivariateSpline, interp1d
-from ..structs import ShipType, AISMessage, MMSI
+from ..structs import ShipType, AISMessage, MMSI, Track
 from ..logger import logger
-from .._types import Track
 
 # Type aliases
 Latitude = float
@@ -22,6 +21,7 @@ Longitude = float
 
 # Constants
 PI = np.pi
+
 
 # Exceptions
 class OutofTimeBoundsError(Exception):
@@ -391,6 +391,7 @@ class TargetShip:
             self.lower.append(track[0])
             self.upper.append(track[-1])
 
+Targets = dict[MMSI,TargetShip]
 class TrajectoryMatcher:
     """
     Class for matching trajectories of two vessels.

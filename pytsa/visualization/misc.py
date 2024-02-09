@@ -16,7 +16,7 @@ import numpy as np
 
 from . import plt, PLOT_FOLDER, mpl, COLORWHEEL_MAP
 from ..data.geometry import __path__ as geometry_path
-from .._types import Targets
+from ..tsea.targetship import Targets
 
 def plot_coastline(extent: BoundingBox, 
                    ax: plt.Axes = None,

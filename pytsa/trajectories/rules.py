@@ -35,7 +35,7 @@ import numpy as np
 from inspect import signature
 from functools import partial
 
-from .._types import Track
+from ..structs import Track
 
 class Recipe:
     """
