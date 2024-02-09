@@ -86,7 +86,7 @@ class ShipType(Enum):
     NOTAVAILABLE = 0
     WIG = range(20,30) # Wing in ground
     FISHING = 30
-    TUGTOW = range(31,33)
+    TUGTOW = [31,32,52]
     MILITARY = 35
     SAILING = 36
     PLEASURE = 37
