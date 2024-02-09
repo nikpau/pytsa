@@ -10,7 +10,7 @@ import multiprocessing as mp
 from copy import deepcopy
 
 from ..logger import logger
-from ..tsea.search_agent import Targets, Track
+from .._types import Targets, Track
 from ..tsea.targetship import TargetShip, AISMessage
 from .rules import Recipe
 

@@ -10,13 +10,13 @@ work.
 import pickle
 from pytsa import BoundingBox, TargetShip
 from pytsa.trajectories import inspect
-from pytsa.tsea.search_agent import Targets
 from glob import glob
 import geopandas as gpd
 import numpy as np
 
 from . import plt, PLOT_FOLDER, mpl, COLORWHEEL_MAP
 from ..data.geometry import __path__ as geometry_path
+from .._types import Targets
 
 def plot_coastline(extent: BoundingBox, 
                    ax: plt.Axes = None,

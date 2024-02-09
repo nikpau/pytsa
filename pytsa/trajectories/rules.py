@@ -35,7 +35,7 @@ import numpy as np
 from inspect import signature
 from functools import partial
 
-from ..tsea.search_agent import Track
+from .._types import Track
 
 class Recipe:
     """

@@ -18,11 +18,7 @@ from ..decode.filedescriptor import (
 )
 from .targetship import TargetShip, AISMessage, InterpolationError
 from ..utils import DataLoader
-
-# Type aliases
-MMSI = int
-Targets = dict[MMSI,TargetShip]
-Track = list[AISMessage]
+from .._types import AISMessage, Targets, Track
 
 def _identity(x):
     return x

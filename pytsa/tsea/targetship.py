@@ -14,7 +14,7 @@ import numpy as np
 from scipy.interpolate import InterpolatedUnivariateSpline, interp1d
 from ..structs import ShipType, AISMessage, MMSI
 from ..logger import logger
-from ..tsea.search_agent import Track
+from .._types import Track
 
 # Type aliases
 Latitude = float
