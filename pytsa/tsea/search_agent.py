@@ -421,10 +421,9 @@ class TargetShipConstructor:
         targets = self._merge_targets(*singles)
         targets = self._remove_duplicates(targets)
         if not skip_tsplit:
-            # targets = self._rejoin_tracks(
-            #     self._determine_split_points(targets)
-            # )
-            targets = self._determine_split_points(targets)
+            targets = self._rejoin_tracks(
+                self._determine_split_points(targets)
+            )
         return targets
         
     def _remove_duplicates(self, targets: Targets) -> Targets:
