@@ -645,18 +645,6 @@ class TargetShipConstructor:
                     to_keep.append(track)
             tgt.tracks = to_keep
     
-    def _break_down_velocity(self,
-                             speed: float,
-                             course: float) -> tuple[float,float]:
-        """
-        Break down a given velocity into its
-        longitudinal and lateral components.
-        """
-        return (
-            speed * np.cos(np.deg2rad(course)), # Longitudinal component
-            speed * np.sin(np.deg2rad(course)) # Lateral component
-        )
-    
     def _overlaps_search_date(self, 
                               track: Track, 
                               tpos: TimePosition) -> bool:
