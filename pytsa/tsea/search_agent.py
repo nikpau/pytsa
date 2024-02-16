@@ -679,7 +679,7 @@ class TargetShipConstructor:
             [Msg5Columns.SHIPTYPE.value].values
         st:np.ndarray = np.unique(st)
         if st.size > 1:
-            logger.warning(
+            logger.debug(
                 f"More than one ship type found for MMSI {mmsi}. "
                 f"Found {st}.")
             return st
@@ -700,7 +700,7 @@ class TargetShipConstructor:
         sl:np.ndarray = np.sum(raw,axis=1)
         sl = np.unique(sl)
         if sl.size > 1:
-            logger.warning(
+            logger.debug(
                 f"More than one ship length found for MMSI {mmsi}. "
                 f"Found {sl}.")
             return sl
