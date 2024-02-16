@@ -419,12 +419,15 @@ class TargetShipConstructor:
                 )
                 singles.extend(res)
         targets = self._merge_targets(*singles)
-        targets = self._rm_dups(targets)
+        targets = self._remove_duplicates(targets)
         if not skip_tsplit:
+            # targets = self._rejoin_tracks(
+            #     self._determine_split_points(targets)
+            # )
             targets = self._determine_split_points(targets)
         return targets
         
-    def _rm_dups(self, targets: Targets) -> Targets:
+    def _remove_duplicates(self, targets: Targets) -> Targets:
         """
         Remove duplicate positions and timestamps.
         Duplicate positions are removed by the 
@@ -468,14 +471,65 @@ class TargetShipConstructor:
                     )
         return targets
     
+    def _rejoin_tracks(self,
+                       targets: Targets) -> Targets:
+        """
+        During the application of the split-point method,
+        we split a trajectory into multiple tracks if two 
+        consecutive AIS messages do not fall into the 
+        95th percentile bounds of the defined metrics 
+        in the paper.
+        
+        In case of a single erroneous AIS message, the
+        split-point method will split the trajectory into
+        a first part containing everything before the
+        erroneous message, a second part containing only
+        the erroneous message and a third part containing
+        everything after the erroneous message. If the 
+        erroneous part in the middle has only one or two 
+        AIS messages, it is removed, leaving us with two 
+        separate tracks.
+        
+        This leads to a situation where a single erroneous
+        message can lead to the creation of two or three 
+        separate tracks, of which the first and the last 
+        logically belong together.
+        
+        This function determines whether the last AIS message
+        of the first track and the first AIS message of the
+        second track are close enough to be considered as
+        part of the same track. If so, the two tracks are
+        joined together.
+        
+        Judgment is based on the same split-point metrics
+        as used for the initial split.
+        """
+        logger.info("Rejoining tracks...")
+        rj_counter = 0
+        for tgt in targets.values():
+            rejoined = []
+            for i, track in enumerate(tgt.tracks):
+                if i == 0:
+                    rejoined.append(track)
+                    continue
+                if not split.is_split_point(rejoined[-1][-1],track[0]):
+                    rejoined[-1].extend(track)
+                    rj_counter += 1
+                else:
+                    rejoined.append(track)
+            tgt.tracks = rejoined
+        logger.info(f"Rejoined {rj_counter} tracks.")
+        return targets
                     
     def _determine_split_points(self,
                                 targets: Targets) -> Targets:
         """
         Determine split points for all target ships.
         """
+        logger.info("Determining split points...")
         nvessels = len(targets)
         ctr = 0
+        split_ctr = 0
         for tgt in list(targets.values()):
             logger.info(
                 f"Processing target ship {tgt.mmsi} "
@@ -490,6 +544,7 @@ class TargetShipConstructor:
                     if split.is_split_point(msg_t0,msg_t1):
                         _itracks.append(track[tstartidx:i+1])
                         tstartidx = i+1
+                        split_ctr += 1
             # Only keep tracks with more than one observation
             tgt.tracks = [track for track in _itracks if len(track) > 2]
             # If no tracks are left, remove target ship
@@ -498,7 +553,7 @@ class TargetShipConstructor:
                     f"Target ship {tgt.mmsi} has no tracks left after filtering."
                 )
                 del targets[tgt.mmsi]
-        logger.info("Splitting done.")
+        logger.info(f"Determined {split_ctr} split points.")
         return targets
                         
     def _sp_construct_target_vessels(self,
