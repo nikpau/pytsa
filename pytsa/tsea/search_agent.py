@@ -418,7 +418,7 @@ class TargetShipConstructor:
                     [(dframe,stat) for dframe in single_frames]
                 )
                 singles.extend(res)
-        targets = self._join_tracks(*singles)
+        targets = self._merge_targets(*singles)
         targets = self._rm_dups(targets)
         if not skip_tsplit:
             targets = self._determine_split_points(targets)
@@ -447,8 +447,8 @@ class TargetShipConstructor:
             
         return targets
     
-    def _join_tracks(self,
-                    *singles: Targets) -> Targets:
+    def _merge_targets(self,
+                       *singles: Targets) -> Targets:
         """
         Join tracks of multiple TargetShip objects
         into a single TargetShip object.
@@ -467,6 +467,7 @@ class TargetShipConstructor:
                         tgt.tracks[0]
                     )
         return targets
+    
                     
     def _determine_split_points(self,
                                 targets: Targets) -> Targets:
@@ -490,7 +491,7 @@ class TargetShipConstructor:
                         _itracks.append(track[tstartidx:i+1])
                         tstartidx = i+1
             # Only keep tracks with more than one observation
-            tgt.tracks = [track for track in _itracks if len(track) > 1]
+            tgt.tracks = [track for track in _itracks if len(track) > 2]
             # If no tracks are left, remove target ship
             if not tgt.tracks:
                 logger.warning(
