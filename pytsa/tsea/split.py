@@ -57,6 +57,11 @@ RMCSQUANTILES = {_QVALUES[k]: _RMCSQUANTILES[k] for k in range(_NQ)}
 # consecutive messages.
 TQUANTILES = {_QVALUES[k]: _TQUANTILES[k] for k in range(_NQ)}
 
+# Cutoff values for the quantiles
+SINGLE_TAIL_CTF = 95.0
+DOUBLE_TAIL_CTF_L = 2.5
+DOUBLE_TAIL_CTF_U = 97.5
+
 def speed_change_too_large(msg_t0: AISMessage, 
                            msg_t1: AISMessage) -> bool:
     """
@@ -64,7 +69,7 @@ def speed_change_too_large(msg_t0: AISMessage,
     is larger than the 95% quantile of the speed change distribution.
     """
     return (
-        abs(msg_t1.SOG - msg_t0.SOG) > SQUANTILES[95]
+        abs(msg_t1.SOG - msg_t0.SOG) > SQUANTILES[SINGLE_TAIL_CTF]
     )
     
 def heading_change_too_large(msg_t0: AISMessage, 
@@ -73,8 +78,10 @@ def heading_change_too_large(msg_t0: AISMessage,
     Return True if the change in heading between two AIS Messages
     is larger than the 95% quantile of the heading change distribution.
     """
+    col = HQUANTILES[DOUBLE_TAIL_CTF_L]
+    cou = HQUANTILES[DOUBLE_TAIL_CTF_U]
     return not (
-        HQUANTILES[2.5] < utils.heading_change(msg_t0.COG,msg_t1.COG) < HQUANTILES[97.5]
+        col < utils.heading_change(msg_t0.COG,msg_t1.COG) < cou
     )
 
 def distance_too_large(msg_t0: AISMessage, 
@@ -85,7 +92,7 @@ def distance_too_large(msg_t0: AISMessage,
     """
     d = utils.greater_circle_distance(
         msg_t0.lon,msg_t0.lat,msg_t1.lon,msg_t1.lat,method="haversine")
-    return d > DQUANTILES[95]
+    return d > DQUANTILES[SINGLE_TAIL_CTF]
 
 def speed_from_position(msg_t0: AISMessage, 
                         msg_t1: AISMessage) -> float:
@@ -117,9 +124,9 @@ def deviation_from_reported_too_large(msg_t0: AISMessage,
         """
         msgs = (msg_t0,msg_t1)
         diff = avg_speed(*msgs) - speed_from_position(*msgs)
-        return not (
-            RMCSQUANTILES[2.5] < diff < RMCSQUANTILES[97.5]
-        )
+        col = RMCSQUANTILES[DOUBLE_TAIL_CTF_L]
+        cou = RMCSQUANTILES[DOUBLE_TAIL_CTF_U]
+        return not col < diff < cou
         
 def time_difference_too_large(msg_t0: AISMessage,
                               msg_t1: AISMessage) -> bool:
@@ -127,8 +134,9 @@ def time_difference_too_large(msg_t0: AISMessage,
         Return True if the time difference between two AIS Messages
         is larger than the 95% quantile of the time difference distribution.
         """
+        co = TQUANTILES[SINGLE_TAIL_CTF]
         return not (
-            TQUANTILES[95.0] > (msg_t1.timestamp - msg_t0.timestamp)
+            co > (msg_t1.timestamp - msg_t0.timestamp)
         )
 
 def is_split_point(msg_t0: AISMessage,
