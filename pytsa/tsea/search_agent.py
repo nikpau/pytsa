@@ -688,7 +688,7 @@ class TargetShipConstructor:
 
     def _get_ship_length(self, 
                          static_msgs: pd.DataFrame,
-                         mmsi: int) -> int:
+                         mmsi: int) -> list[int]:
         """
         Return the ship length of a given MMSI number.
 
@@ -702,6 +702,6 @@ class TargetShipConstructor:
         if sl.size > 1:
             logger.warning(
                 f"More than one ship length found for MMSI {mmsi}. "
-                f"Found {sl}. Returning {max(sl)}.")
-            return max(sl)
-        return sl
+                f"Found {sl}.")
+            return sl
+        return list(sl)
