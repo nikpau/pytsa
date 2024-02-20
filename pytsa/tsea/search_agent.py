@@ -309,9 +309,11 @@ class SearchAgent:
         --------
         dict: A dictionary of dict[MMSI,TargetShip]. 
         """
-        return self.constructor._mp_construct_target_vessels(
+        targets = self.constructor._mp_construct_target_vessels(
             njobs,skip_tsplit
         )
+        self.constructor.print_trex_stats()
+        return targets
 
     def _interpolate_trajectories(self, 
                            tgts: Targets,
@@ -346,6 +348,13 @@ class TargetShipConstructor:
     def __init__(self, data_loader: DataLoader) -> None:
         
         self.data_loader = data_loader
+        
+        # Statistics
+        self._n_split_points = 0
+        self._n_rejoined_tracks = 0
+        self._n_duplicates = 0
+        self._n_obs_raw = 0
+        self._n_trajectories = 0
 
 
     def _distribute(self, df: pd.DataFrame) -> list[pd.DataFrame]:
@@ -412,9 +421,11 @@ class TargetShipConstructor:
         containing only messages from a single MMSI. These dataframes
         are then processed in parallel and the results are merged.
         """
+        self.reset_stats()
         singles: list[Targets] = []
         with mp.Pool(njobs) as pool:
             for dyn, stat in self.data_loader.iterate_chunks():
+                self._n_obs_raw += len(dyn)
                 single_frames = self._distribute(dyn)
                 res = pool.starmap(
                     self._impl_construct_target_vessel,
@@ -427,6 +438,7 @@ class TargetShipConstructor:
             targets = self._rejoin_tracks(
                 self._determine_split_points(targets)
             )
+        self._n_trajectories = sum([len(tgt.tracks) for tgt in targets.values()])
         return targets
         
     def _remove_duplicates(self, targets: Targets) -> Targets:
@@ -444,10 +456,12 @@ class TargetShipConstructor:
         for tgt in targets.values():
             # Rm pos dups
             rmpos = list(set(tgt.tracks[0]))
+            self._n_duplicates += len(tgt.tracks[0]) - len(rmpos)
             # Check for timestamp dups
             ts_sorted_idx = np.unique(
                 [msg.timestamp for msg in rmpos],
                 return_index=True)[1]
+            self._n_duplicates += len(rmpos) - len(ts_sorted_idx)
             tgt.tracks[0] = [rmpos[i] for i in ts_sorted_idx]
             
         return targets
@@ -507,7 +521,6 @@ class TargetShipConstructor:
         as used for the initial split.
         """
         logger.info("Rejoining tracks...")
-        rj_counter = 0
         for tgt in targets.values():
             rejoined = []
             for i, track in enumerate(tgt.tracks):
@@ -516,11 +529,11 @@ class TargetShipConstructor:
                     continue
                 if not split.is_split_point(rejoined[-1][-1],track[0]):
                     rejoined[-1].extend(track)
-                    rj_counter += 1
+                    self._n_rejoined_tracks += 1
                 else:
                     rejoined.append(track)
             tgt.tracks = rejoined
-        logger.info(f"Rejoined {rj_counter} tracks.")
+        logger.info(f"Rejoined {self._n_rejoined_tracks} tracks.")
         return targets
                     
     def _determine_split_points(self,
@@ -531,7 +544,6 @@ class TargetShipConstructor:
         logger.info("Determining split points...")
         nvessels = len(targets)
         ctr = 0
-        split_ctr = 0
         for tgt in list(targets.values()):
             logger.debug(
                 f"Processing target ship {tgt.mmsi} "
@@ -546,7 +558,7 @@ class TargetShipConstructor:
                     if split.is_split_point(msg_t0,msg_t1):
                         _itracks.append(track[tstartidx:i+1])
                         tstartidx = i+1
-                        split_ctr += 1
+                        self._n_split_points += 1
             # Only keep tracks with more than one observation
             tgt.tracks = [track for track in _itracks if len(track) > 2]
             # If no tracks are left, remove target ship
@@ -555,7 +567,7 @@ class TargetShipConstructor:
                     f"Target ship {tgt.mmsi} has no tracks left after filtering."
                 )
                 del targets[tgt.mmsi]
-        logger.info(f"Determined {split_ctr} split points.")
+        logger.info(f"Determined {self._n_split_points} split points.")
         return targets
                         
     def _sp_construct_target_vessels(self,
@@ -699,3 +711,44 @@ class TargetShipConstructor:
                 f"Found {sl}.")
             return sl
         return list(sl)
+    
+    def print_trex_stats(self) -> str:
+        """
+        Print statistics of the last 
+        trajectory extraction.
+        """
+        metrics = {
+            'Number of Raw Messages': self._n_obs_raw,
+            'Number of Duplicates': self._n_duplicates,
+            'Number of Trajectories': self._n_trajectories,
+            'Number of Split-Points': self._n_split_points,
+            'Number of Rejoined Tracks': self._n_rejoined_tracks,
+        }
+        
+        # Printout styling
+        title = "Trajectory Extraction Summary"
+        separator = "-" * 50
+        header = f"{'Metric':<30}{'Value':>20}"
+
+        # Printing the title and header
+        print(f"{separator}\n{title.center(len(separator))}\n{separator}")
+        print(header)
+        print(separator)
+
+        # Iterating over the metrics to print each one
+        for metric, value in metrics.items():
+            print(f"{metric:<30}{value:>20}")
+
+        print(separator)
+        
+    def reset_stats(self) -> None:
+        """
+        Reset statistics.
+        """
+        self._n_split_points = 0
+        self._n_rejoined_tracks = 0
+        self._n_duplicates = 0
+        self._n_obs_raw = 0
+        self._n_trajectories = 0
+        logger.debug("Trajectory extraction statistics reset.")
+        return None
