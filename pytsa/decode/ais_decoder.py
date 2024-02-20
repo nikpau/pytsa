@@ -184,6 +184,9 @@ def decode(source: Path,
 
     overwrite: If True, overwrite existing files in the destination folder.
     """
+    assert source.is_dir(), "Source must be a directory"
+    assert dest.is_dir(), "Destination must be a directory"
+    
     files = list(source.glob("*.csv")) 
     # Check if any files are in the destination folder
     # and remove them from the list of files to be processed
