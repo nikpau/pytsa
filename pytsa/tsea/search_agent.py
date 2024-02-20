@@ -377,9 +377,12 @@ class TargetShipConstructor:
         dyn = dyn.sort_values(by=BaseColumns.TIMESTAMP.value)
         
         for ts,lat,lon,sog,cog in zip(
-            dyn[BaseColumns.TIMESTAMP.value], dyn[Msg12318Columns.LAT.value],  
-            dyn[Msg12318Columns.LON.value],       dyn[Msg12318Columns.SPEED.value],
+            dyn[BaseColumns.TIMESTAMP.value], 
+            dyn[Msg12318Columns.LAT.value],  
+            dyn[Msg12318Columns.LON.value],       
+            dyn[Msg12318Columns.SPEED.value],
             dyn[Msg12318Columns.COURSE.value]):
+            
             ts: pd.Timestamp # make type hinting happy
             
             msg = AISMessage(
@@ -530,7 +533,7 @@ class TargetShipConstructor:
         ctr = 0
         split_ctr = 0
         for tgt in list(targets.values()):
-            logger.info(
+            logger.debug(
                 f"Processing target ship {tgt.mmsi} "
                 f"({ctr+1}/{nvessels})"
             )
@@ -548,7 +551,7 @@ class TargetShipConstructor:
             tgt.tracks = [track for track in _itracks if len(track) > 2]
             # If no tracks are left, remove target ship
             if not tgt.tracks:
-                logger.warning(
+                logger.debug(
                     f"Target ship {tgt.mmsi} has no tracks left after filtering."
                 )
                 del targets[tgt.mmsi]
@@ -581,9 +584,13 @@ class TargetShipConstructor:
         neighbors = neighbors.sort_values(by=BaseColumns.TIMESTAMP.value)
         
         for mmsi,ts,lat,lon,sog,cog in zip(
-            neighbors[Msg12318Columns.MMSI.value], neighbors[BaseColumns.TIMESTAMP.value],
-            neighbors[Msg12318Columns.LAT.value],  neighbors[Msg12318Columns.LON.value],
-            neighbors[Msg12318Columns.SPEED.value],neighbors[Msg12318Columns.COURSE.value]):
+            neighbors[Msg12318Columns.MMSI.value], 
+            neighbors[BaseColumns.TIMESTAMP.value],
+            neighbors[Msg12318Columns.LAT.value],  
+            neighbors[Msg12318Columns.LON.value],
+            neighbors[Msg12318Columns.SPEED.value],
+            neighbors[Msg12318Columns.COURSE.value]):
+            
             ts: pd.Timestamp # make type hinting happy
             
             msg = AISMessage(
