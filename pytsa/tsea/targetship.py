@@ -204,9 +204,11 @@ class TargetShip:
         assert mode in ["linear","spline","auto"],\
             "Mode must be either 'linear', 'spline' or 'auto'."
         if not self.tracks:
-            raise InterpolationError(
+            logger.warning(
                 f"Empty track for vessel {self.mmsi}."
             )
+            self.interpolation = None
+            return
         self.interpolation = []
         for track in self.tracks:
             try:
