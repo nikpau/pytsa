@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, List, Union
+from typing import Callable, Generator, List, Union
 from more_itertools import pairwise
 import multiprocessing as mp
 import numpy as np
@@ -200,6 +200,13 @@ class SearchAgent:
         else:
             static_paths = static_paths
             static_paths = [Path(p) for p in static_paths]
+
+        # Exhaust generators 
+        # This is possible if Path().glob() is used
+        if isinstance(dynamic_paths, Generator):
+            dynamic_paths = list(dynamic_paths)
+        if isinstance(static_paths, Generator):
+            static_paths = list(static_paths)
             
         self.data_loader = DataLoader(
             dynamic_paths,
