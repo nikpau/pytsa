@@ -187,26 +187,26 @@ class SearchAgent:
                 If `high_accuracy` is False, the Haversine formula
                 is used. Defaults to False.
         """
-
-        if not isinstance(dynamic_paths,list):
-            dynamic_paths = [dynamic_paths]
-            dynamic_paths = [Path(p) for p in dynamic_paths]
-        else:
-            dynamic_paths = [Path(p) for p in dynamic_paths]
-
-        if not isinstance(static_paths,list):
-            static_paths = [static_paths]
-            static_paths = [Path(p) for p in static_paths]
-        else:
-            static_paths = static_paths
-            static_paths = [Path(p) for p in static_paths]
-
         # Exhaust generators 
         # This is possible if Path().glob() is used
         if isinstance(dynamic_paths, Generator):
             dynamic_paths = list(dynamic_paths)
+        elif not isinstance(dynamic_paths,list):
+            dynamic_paths = [dynamic_paths]
+            dynamic_paths = [Path(p) for p in dynamic_paths]
+        else:
+            dynamic_paths = [Path(p) for p in dynamic_paths]
+        
         if isinstance(static_paths, Generator):
             static_paths = list(static_paths)
+        elif not isinstance(static_paths,list):
+            static_paths = [static_paths]
+            static_paths = [Path(p) for p in static_paths]
+        else:
+            static_paths = [Path(p) for p in static_paths]
+
+
+
             
         self.data_loader = DataLoader(
             dynamic_paths,
