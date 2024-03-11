@@ -13,7 +13,7 @@ from ..structs import (
     UNIX_TIMESTAMP
 )
 from . import split
-from ..decode.filedescriptor import (
+from ..decoder.filedescriptor import (
     BaseColumns, Msg12318Columns, Msg5Columns
 )
 from .targetship import (

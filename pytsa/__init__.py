@@ -1,7 +1,7 @@
 from .tsea.search_agent import SearchAgent, TimePosition, TargetShip
 from .structs import BoundingBox, ShipType
 from .trajectories import Inspector, ExampleRecipe
-from .decode import decode_from_file, decode
+from .decoder import decode_from_file, decode
 from .visualization import register_plot_dir
 from . import visualization
 

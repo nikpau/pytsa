@@ -13,9 +13,9 @@ import psutil
 import vincenty as _vincenty
 import ciso8601
 from .logger import logger
-from .decode import decode_from_file
-from .decode.filedescriptor import (
-    BaseColumns, Msg12318Columns, Msg5Columns   
+from .decoder import decode_from_file
+from .decoder.filedescriptor import (
+    BaseColumns, Msg12318Columns, Msg5Columns
 )
 
 def m2nm(m: float) -> float:
