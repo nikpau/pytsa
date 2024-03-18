@@ -15,6 +15,9 @@ from ..tsea.targetship import TargetShip, AISMessage, Targets
 from .rules import Recipe
 
 def print_rejection_rate(n_rejected: int, n_total: int) -> None:
+    if n_total == 0:
+        logger.warning("No trajectories to filter.")
+        return
     logger.info(
         f"Filtered {n_total} trajectories. "
         f"{(n_rejected)/n_total*100:.2f}% rejected."
