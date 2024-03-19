@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pytsa-ais"
-version = "2.2.1"
+version = "2.2.2"
 description = "Toolbox for extracting trajectories and monitoring vessels from raw AIS records."
 authors = ["Niklas Paulig <niklas.paulig@tu-dresden.de>"]
 classifiers = [
