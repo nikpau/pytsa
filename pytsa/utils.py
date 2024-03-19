@@ -199,8 +199,7 @@ class DataLoader:
         Preprocess the dynamic messages.
         """
         # Apply custom filter
-        df = self.preprocessor(df).copy()
-        df = df.query(self.spatial_filter)
+        df = self.preprocessor(df).query(self.spatial_filter).copy()
         # Convert timestamp to datetime
         df[BaseColumns.TIMESTAMP.value] = pd.to_datetime(
                 df[BaseColumns.TIMESTAMP.value])
