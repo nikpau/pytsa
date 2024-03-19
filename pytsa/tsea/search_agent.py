@@ -205,25 +205,20 @@ class SearchAgent:
         else:
             static_paths = [Path(p) for p in static_paths]
 
-
-
-            
-        self.data_loader = DataLoader(
-            dynamic_paths,
-            static_paths,
-            preprocessor
-        )
-
-        # Spatial bounding box of current AIS message space
-        self.FRAME = frame
-        
         self.high_accuracy = high_accuracy
         
-        self.spatial_filter = (
+        spatial_filter = (
             f"{Msg12318Columns.LON.value} > {frame.LONMIN} and "
             f"{Msg12318Columns.LON.value} < {frame.LONMAX} and "
             f"{Msg12318Columns.LAT.value} > {frame.LATMIN} and "
             f"{Msg12318Columns.LAT.value} < {frame.LATMAX}"
+        )
+
+        self.data_loader = DataLoader(
+            dynamic_paths,
+            static_paths,
+            preprocessor,
+            spatial_filter
         )
 
         # Maximum number of target ships to extract

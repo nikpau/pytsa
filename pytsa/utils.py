@@ -116,9 +116,14 @@ class DataLoader:
     def __init__(self, 
                  dynamic_paths: list[Path],
                  static_paths: list[Path],
-                 pre_processor: Callable[[pd.DataFrame],pd.DataFrame]) -> None:
+                 pre_processor: Callable[[pd.DataFrame],pd.DataFrame],
+                 spatial_filter: str) -> None:
         
         self.preprocessor = pre_processor
+        
+        # Text query to filter the data 
+        # based on the spatial extent.
+        self.spatial_filter = spatial_filter
         
         # Check that we only have csv files
         assert all(
@@ -195,6 +200,7 @@ class DataLoader:
         """
         # Apply custom filter
         df = self.preprocessor(df).copy()
+        df = df.query(self.spatial_filter)
         # Convert timestamp to datetime
         df[BaseColumns.TIMESTAMP.value] = pd.to_datetime(
                 df[BaseColumns.TIMESTAMP.value])
