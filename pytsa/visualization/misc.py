@@ -127,7 +127,7 @@ def binned_heatmap(targets: Targets,
     cbaxes = inset_axes(ax, width="40%", height="2%", loc=4, borderpad = 2)
     cbaxes.grid(False)
     cbar = fig.colorbar(pcm,cax=cbaxes, orientation="horizontal")
-    cbar.set_label(r"Route density ($n_{msg}$)",color="white")
+    cbar.set_label(r"Route density ($n_{msg}$)",color="black")
 
     newticks = np.linspace(1,counts.max(),3)
     cbar.set_ticks(
@@ -136,8 +136,8 @@ def binned_heatmap(targets: Targets,
     )
     
     cbar.ax.xaxis.set_ticks_position("top")
-    cbar.ax.xaxis.set_tick_params(color="white")
-    plt.setp(plt.getp(cbar.ax.axes, 'xticklabels'), color="white") 
+    cbar.ax.xaxis.set_tick_params(color="black")
+    plt.setp(plt.getp(cbar.ax.axes, 'xticklabels'), color="black") 
     
     ax.set_xlabel("Longitude")
     ax.set_ylabel("Latitude")
