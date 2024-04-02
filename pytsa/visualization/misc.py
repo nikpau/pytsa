@@ -11,6 +11,7 @@ import pickle
 from pytsa import BoundingBox, TargetShip
 from pytsa.trajectories import inspect
 from glob import glob
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import geopandas as gpd
 import numpy as np
 
@@ -119,7 +120,25 @@ def binned_heatmap(targets: Targets,
     cmap = mpl.colormaps["Reds"]
     cmap.set_bad(alpha=0)
     ax.grid(False)
-    ax.pcolormesh(xx,yy,counts,cmap=cmap)
+    pcm = ax.pcolormesh(xx,yy,counts,cmap=cmap)
+    
+    
+    # Small inset Colorbar
+    cbaxes = inset_axes(ax, width="40%", height="2%", loc=4, borderpad = 2)
+    cbaxes.grid(False)
+    cbar = fig.colorbar(pcm,cax=cbaxes, orientation="horizontal")
+    cbar.set_label(r"Route density ($n_{msg}$)",color="white")
+
+    newticks = np.linspace(1,counts.max(),3)
+    cbar.set_ticks(
+        ticks = newticks,
+        labels = [f"{(np.exp(np.exp(t))-np.exp(1))/np.exp(1):.0f}" for t in newticks]
+    )
+    
+    cbar.ax.xaxis.set_ticks_position("top")
+    cbar.ax.xaxis.set_tick_params(color="white")
+    plt.setp(plt.getp(cbar.ax.axes, 'xticklabels'), color="white") 
+    
     ax.set_xlabel("Longitude")
     ax.set_ylabel("Latitude")
     ax.set_title("Heatmap of messages")
