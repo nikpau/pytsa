@@ -126,7 +126,7 @@ def binned_heatmap(targets: Targets,
     
     
     plt.tight_layout()
-    plt.savefig(f"{PLOT_FOLDER}/headmap.png",dpi=300)
+    plt.savefig(f"{PLOT_FOLDER}/heatmap.png",dpi=300)
     
 def plot_trajectories_on_map(ships: dict[int,TargetShip], 
                              extent: BoundingBox) -> None:
