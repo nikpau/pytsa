@@ -1,6 +1,8 @@
 """
 Utility functions for pytsa
 """
+from __future__ import annotations
+
 from datetime import datetime
 from itertools import cycle
 import math
@@ -85,6 +87,14 @@ def heading_change(h1,h2):
         return diff
     else:
         return -diff
+        
+def dms2dd(degrees: float, minutes: float, seconds: float) -> float:
+    """
+    Convert degrees, minutes and seconds to decimal degrees.
+    Example: 123°45'67" -> 123.752
+    dms2dd(123,45,67) -> 123.752
+    """
+    return degrees + minutes/60 + seconds/3600
     
 class DataLoader:
     """
@@ -120,6 +130,8 @@ class DataLoader:
                  spatial_filter: str) -> None:
         
         self.preprocessor = pre_processor
+        self.dynamic_paths = dynamic_paths
+        self.static_paths = static_paths
         
         # Text query to filter the data 
         # based on the spatial extent.
