@@ -134,35 +134,29 @@ class Inspector:
             target[vessel.mmsi].tracks = []
         target[vessel.mmsi].tracks.append(track)
 
-# Utility functions for calculating
-# the adapted average smoothness
-def cosine_of_angle_between(msg_t0: AISMessage,
-                            msg_t1: AISMessage,
-                            msg_t2: AISMessage) -> float:
+def cosine_of_angle_between(track: Track) -> float:
     """
-    Return the cosine of the angle between the track
+    Return the cosine of the angle between a track
+    of AIS Messages.
+    """
+    positions = np.array([(msg.lon,msg.lat) for msg in track])
+    v1 = positions[:-2] - positions[1:-1] # p0 - p1 
+    v2 = positions[2:] - positions[1:-1] # p2 - p1
+    
+    # Dot product
+    dot_product = np.einsum('ij,ij->i',v1,v2)
+    # Norms
+    norms = np.linalg.norm(v1,axis=1) * np.linalg.norm(v2,axis=1)
+    
+    return dot_product / norms
+
+def angle_between(track: Track) -> float:
+    """
+    Return the angle between the track
     of three AIS Messages.
     """
-    p1 = (msg_t0.lon,msg_t0.lat)
-    p2 = (msg_t1.lon,msg_t1.lat)
-    p3 = (msg_t2.lon,msg_t2.lat)
-    
-    v1 = np.array(p1) - np.array(p2)
-    v2 = np.array(p3) - np.array(p2)
-    
-    nom = np.dot(v1,v2)
-    den = np.linalg.norm(v1) * np.linalg.norm(v2)
-    return nom / den
-
-def angle_between(msg_t0: AISMessage,
-                  msg_t1: AISMessage,
-                  msg_t2: AISMessage) -> float:
-        """
-        Return the angle between the track
-        of three AIS Messages.
-        """
-        _cos = cosine_of_angle_between(msg_t0,msg_t1,msg_t2)        
-        return np.arccos(round(_cos,6)) # Round to avoid floating point errors
+    _cos = cosine_of_angle_between(track)        
+    return np.arccos(np.round(_cos,6)) # Round to avoid floating point errors
     
 def average_smoothness(track: Track) -> float:
     """
@@ -202,14 +196,12 @@ def average_smoothness(track: Track) -> float:
        track has fewer than three points, the behavior of the 
        function is unspecified.
     """
-    angles = []
     if len(track) < 3:
         raise ValueError(
             "Average smoothness requires at "
             "least three messages per track. "
             "{} were given".format(len(track))
         )
-    for i in range(1,len(track)-1):
-        ang = angle_between(track[i-1],track[i],track[i+1])
-        angles.append((ang / np.pi)**2)
-    return np.mean(angles)
+    angles = angle_between(track)
+    normalized_angles = (angles / np.pi)**2
+    return np.mean(normalized_angles)
