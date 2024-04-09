@@ -158,7 +158,7 @@ def angle_between(track: Track) -> float:
     _cos = cosine_of_angle_between(track)        
     return np.arccos(np.round(_cos,6)) # Round to avoid floating point errors
     
-def average_smoothness(track: Track) -> float:
+def average_smoothness(track: Track, tau: int = 1) -> float:
     """
     Calculate the average smoothness of a navigational 
     track.
@@ -196,6 +196,7 @@ def average_smoothness(track: Track) -> float:
        track has fewer than three points, the behavior of the 
        function is unspecified.
     """
+    assert tau > 0, "Tau must be a positive integer."
     if len(track) < 3:
         raise ValueError(
             "Average smoothness requires at "
@@ -203,5 +204,5 @@ def average_smoothness(track: Track) -> float:
             "{} were given".format(len(track))
         )
     angles = angle_between(track)
-    normalized_angles = (angles / np.pi)**4
+    normalized_angles = (angles / np.pi)**tau
     return np.mean(normalized_angles)
