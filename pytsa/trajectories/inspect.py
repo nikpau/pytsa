@@ -203,5 +203,5 @@ def average_smoothness(track: Track) -> float:
             "{} were given".format(len(track))
         )
     angles = angle_between(track)
-    normalized_angles = (angles / np.pi)**2
+    normalized_angles = (angles / np.pi)**4
     return np.mean(normalized_angles)
