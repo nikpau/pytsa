@@ -39,6 +39,7 @@ from functools import partial
 from scipy.spatial import ConvexHull
 
 from ..structs import Track
+from ..logger import logger
 
 class Recipe:
     """
@@ -146,7 +147,17 @@ def convex_hull_area(track: Track, area: float) -> bool:
         np.array([p.lon for p in track])
     )
     points = np.array([res[0],res[1]]).T
-    return ConvexHull(points).area < area
+    # Convex hull calculation can fail for 
+    # some tracks, e.g. if all points are 
+    # colinear. In this case, we reject the track.
+    try:
+        return ConvexHull(points).area < area
+    except Exception as e:
+        logger.error(
+            f"Error in convex hull calculation: {e}"
+            "Rejecting track."
+            )
+        return True
 
 # Example recipe---------------------------------------------------------------
 ExampleRecipe = Recipe(
