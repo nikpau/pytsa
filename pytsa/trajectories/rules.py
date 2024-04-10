@@ -120,8 +120,8 @@ def spatial_deviation(track: Track, sd: tuple | float) -> bool:
     else:
         assert all(s > 0 for s in sd)
         lower, upper = sd
-    sdlon = np.sqrt(np.var([v.lon for v in track]))
-    sdlat = np.sqrt(np.var([v.lat for v in track]))
+    sdlon = np.std([v.lon for v in track])
+    sdlat = np.std([v.lat for v in track])
     return lower <= sdlon + sdlat <= upper
 
 def too_small_span(track: Track, span: float) -> bool:
@@ -140,6 +140,7 @@ def convex_hull_area(track: Track, area: float) -> bool:
     track of the given vessel is smaller than `area`.
     (Not used in the paper)
     """
+    assert len(track) > 2, "Need at least 3 points to calculate convex hull"
     res = utm.from_latlon(
         np.array([p.lat for p in track]),
         np.array([p.lon for p in track])
