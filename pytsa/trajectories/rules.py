@@ -30,10 +30,13 @@ The `cooked` function can now be passed to the TrajectorySplitter class
 to perform the trajectory splitting.
 
 """
-from typing import Callable
+import utm
 import numpy as np
+
+from typing import Callable
 from inspect import signature
 from functools import partial
+from scipy.spatial import ConvexHull
 
 from ..structs import Track
 
@@ -101,6 +104,14 @@ def spatial_deviation(track: Track, sd: tuple | float) -> bool:
     or if `sd` is a tuple, if the standard deviation is
     within the range of `sd`.
     Unit of `sd` is [°].
+
+    Note that the standard deviation is no accurate measure
+    of the spatial deviation, as it does not take into account
+    the actual distances between the points. It is only a
+    rough measure of the spread of the points.
+    Accuracy decreases rapidly with proximity to the poles.
+
+    (Not used in the paper)
     """
     assert isinstance(sd,(tuple,float))
     if isinstance(sd,float):
@@ -123,8 +134,21 @@ def too_small_span(track: Track, span: float) -> bool:
     lon_span = np.ptp([v.lon for v in track])
     return lat_span > span and lon_span > span
 
+def convex_hull_area(track: Track, area: float) -> bool:
+    """
+    Return True if the area of the convex hull of the
+    track of the given vessel is smaller than `area`.
+    (Not used in the paper)
+    """
+    res = utm.from_latlon(
+        np.array([p.lat for p in track]),
+        np.array([p.lon for p in track])
+    )
+    points = np.array([res[0],res[1]]).T
+    return ConvexHull(points).area < area
+
 # Example recipe---------------------------------------------------------------
 ExampleRecipe = Recipe(
     partial(too_few_obs, n=100),
-    partial(spatial_deviation, sd=0.1)
+    partial(convex_hull_area, area=3e4)
 )
