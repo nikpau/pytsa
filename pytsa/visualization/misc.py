@@ -196,7 +196,7 @@ def plot_trajectories_on_map(ships: dict[int,TargetShip],
     ax.set_ylabel("Latitude")
     plt.title(f"Extracted Trajectories", size = 14)
     plt.tight_layout()
-    plt.savefig(f"aisstats/out/trajectories_map.png",dpi=600)
+    plt.savefig(f"{PLOT_FOLDER}/trajectories_map.png",dpi=600)
     plt.close()
 
 def pixelmap_average_smoothness(ships: dict[int,TargetShip],
