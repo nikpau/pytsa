@@ -7,17 +7,32 @@ used in the paper, but are included here
 anyways, as they might be useful for future
 work.
 """
-import pickle
-from pytsa import BoundingBox, TargetShip
-from pytsa.trajectories import inspect
-from glob import glob
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import utm
 import geopandas as gpd
 import numpy as np
+
+from pytsa import BoundingBox, TargetShip
+from pytsa.trajectories import inspect
+from pytsa.structs import Track
+from glob import glob
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from scipy.spatial import ConvexHull
 
 from . import plt, PLOT_FOLDER, mpl, COLORWHEEL_MAP
 from ..data.geometry import __path__ as geometry_path
 from ..tsea.targetship import Targets
+
+def _cvh_area(track: Track) -> float:
+    """
+    Calculate the area of the convex hull
+    of a track.
+    """
+    res = utm.from_latlon(
+        np.array([p.lat for p in track]),
+        np.array([p.lon for p in track])
+    )
+    points = np.array([res[0],res[1]]).T
+    return ConvexHull(points).area
 
 def plot_coastline(extent: BoundingBox, 
                    ax: plt.Axes = None,
@@ -316,29 +331,37 @@ def pixelmap_average_smoothness(ships: dict[int,TargetShip],
     plt.tight_layout()
     plt.savefig(f"{PLOT_FOLDER}/pixelmap_avg_smoothness.pdf")
     
-def ssd_range_comparison(ships: dict[int,TargetShip]) -> None:
+def cvh_range_comparison(ships: dict[int,TargetShip]) -> None:
     """
-    Figure 12 in the paper.
+    Figure 13 in the paper.
     
     Walks through the trajectories of the ships
     in `ships` and plots 100 trajectories for each
-    standard deviation range.
-    The standard deviation range is defined by
-    iterating over the `sds` array with a 
-    rolling window of size 2.
+    convex hull range.
     
     An inset is added to each plot, showing the
     center region of the trajectory, as for some
     ranges, the trajectories are too dense to
     distinguish individual trajectories.
     """
-    
-    sds = np.array([0,0.01,0.02,0.03,0.04,0.05,0.1,0.2,0.3])
+    areas = np.array(
+        [0,1000,5000,10000,20000,50000,100_000,200_000,300_000]
+    )
     
     for ship in ships.values():
-        # Center trajectory
-        # Get mean of lat and lon
+        # We need to calculate the convex hull area
+        # for each track in the ship before
+        # de-meaning the trajectories as the
+        # UTM transform will not work on flipping
+        # coorinate signs.
+        ship.cvhareas = []
         for track in ship.tracks:
+            try:
+                ship.cvhareas.append(_cvh_area(track))
+            except:
+                ship.cvhareas.append(-1)
+            # Center trajectory
+            # Get mean of lat and lon
             latmean = sum(p.lat for p in track) / len(track)
             lonmean = sum(p.lon for p in track) / len(track)
             # Subtract mean from all positions
@@ -350,7 +373,7 @@ def ssd_range_comparison(ships: dict[int,TargetShip]) -> None:
             
     # Plot trajectories for different sds
     ncols = 4
-    div,mod = divmod(len(sds)-1,ncols)
+    div,mod = divmod(len(areas)-1,ncols)
     nrows = div + 1 if mod else div
     fig, axs = plt.subplots(nrows=nrows,ncols=ncols,figsize=(4*ncols,8))
     subpos = [0.55,0.55,0.4,0.4]
@@ -368,25 +391,26 @@ def ssd_range_comparison(ships: dict[int,TargetShip]) -> None:
             np.random.shuffle(ships)
             for ship in ships:
                 # Get standard deviation of lat and lon
-                for track in ship.tracks:
+                for i, track in enumerate(ship.tracks):
                     lo = [p.lon for p in track]
                     la = [p.lat for p in track]
-                    latstd = np.std(la)
-                    lonstd = np.std(lo)
+                    hullarea = ship.cvhareas[i]
+                    if hullarea == -1:
+                        continue
                     # Check if within range
-                    if sds[idx] <= (latstd + lonstd) <= sds[idx+1]:
-                        if trnr == 100:
+                    if areas[idx] <= hullarea <= areas[idx+1]:
+                        if trnr == 50:
                             break
                         trnr += 1
                         lons.append(lo)
                         lats.append(la)
                         
-
-            inset = axs[row,col].inset_axes(subpos)
-            
-            # Add lines for x and y axes
-            inset.axhline(0, color='k', linewidth=0.5)
-            inset.axvline(0, color='k', linewidth=0.5)
+            if row != 1:
+                inset = axs[row,col].inset_axes(subpos)
+                
+                # Add lines for x and y axes
+                inset.axhline(0, color='k', linewidth=0.5)
+                inset.axvline(0, color='k', linewidth=0.5)
             
             axs[row,col].axhline(0, color='k', linewidth=0.5)
             axs[row,col].axvline(0, color='k', linewidth=0.5)
@@ -402,27 +426,28 @@ def ssd_range_comparison(ships: dict[int,TargetShip]) -> None:
                     linewidth = 0.6
                 )
             
-                # Plot center region in inset
-                inset.plot(    
-                    lo,la,
-                    color = COLORWHEEL_MAP[niter % len(COLORWHEEL_MAP)],
-                    linewidth = 1,
-                    marker = "x",
-                    markersize = 1
-                )
-                
+                if row != 1:
+                    # Plot center region in inset
+                    inset.plot(    
+                        lo,la,
+                        color = COLORWHEEL_MAP[niter % len(COLORWHEEL_MAP)],
+                        linewidth = 1,
+                        marker = "x",
+                        markersize = 1
+                    )
                     
-                # inset.set_axes_locator(ip)
-                inset.set_xlim(-0.02,0.02)
-                inset.set_ylim(-0.02,0.02)
-                
+                        
+                    # inset.set_axes_locator(ip)
+                    inset.set_xlim(-0.02,0.02)
+                    inset.set_ylim(-0.02,0.02)
+                    
                 niter += 1
                 
             axs[row,col].set_xlabel("Longitude")
             axs[row,col].set_ylabel("Latitude")
             axs[row,col].set_title(
-                "$\sigma_{ssd}\in$"
-                f"[{sds[row*ncols+col]:.2f},{sds[row*ncols+col+1]:.2f}]",
+                "$A^{C}\in$"
+                f"[{areas[row*ncols+col]},{areas[row*ncols+col+1]}]$m^2$",
                 fontsize=16
             )
 
@@ -433,8 +458,5 @@ def ssd_range_comparison(ships: dict[int,TargetShip]) -> None:
             idx += 1
             
     plt.tight_layout()
-    
-    # Pdfs are rather large, so to save space
-    # png can be used instead.
-    plt.savefig(f"aisstats/out/trjitter.pdf")
-    plt.close()
+    plt.savefig(f"{PLOT_FOLDER}/cvhjitter.pdf")
+    plt.close()    
