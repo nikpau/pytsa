@@ -75,12 +75,17 @@ def binned_heatmap(targets: Targets,
     in the search area with resolution
     `npixels x npixels`.
     
+    The targets do not need to come exactly
+    from the same area as the bounding box,
+    as the heatmap will be cropped to the
+    bounding box.
+    
     Parameters
     ----------
     targets : Targets
-        The targets to be plotted.
+        The target ships to be analyzed.
     bb : BoundingBox
-        The search area.
+        Spatial extent to be plotted on the heatmap.
     npixels : int
         The number of pixels per dimension.
         
@@ -95,6 +100,8 @@ def binned_heatmap(targets: Targets,
     for ship in targets.values():
         for track in ship.tracks:
             for msg in track:
+                if not bb.contains(msg):
+                    continue
                 # Find the closest pixel
                 i = np.argmin(np.abs(x - msg.lon))
                 j = np.argmin(np.abs(y - msg.lat))
