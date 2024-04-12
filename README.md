@@ -327,7 +327,7 @@ If you use this module in your research, please consider citing this repository 
 ```
 @misc{pytsa2024,
   author = {Paulig, Niklas},
-  title = {{PyTSA}: A Python Module for Extracting Trajectories from Raw AIS Data},
+  title = {{PyTSA}: Python Trajectory Splitting and Assessment Agent for AIS Data},
   year = {2024},
   publisher = {GitHub},
   journal = {GitHub repository},
