@@ -205,3 +205,44 @@ def average_smoothness(track: Track) -> float:
     angles = angle_between(track)
     normalized_angles = (angles / np.pi)
     return np.mean(normalized_angles)
+
+def average_absolute_change_of_course(track: Track, degrees: bool = False) -> float:
+    """
+    Calculate the average absolute change of course 
+    of a navigational track.
+
+    This function computes the average absolute change 
+    of course of a path represented by a list of AISMessage 
+    objects. It evaluates the change of course based on 
+    the angles formed at each point along the path, where 
+    each angle is determined by a sequence of three 
+    consecutive AISMessage points. The change of course 
+    is a measure of how much the path changes direction 
+    at each point, with larger angles indicating a greater 
+    change of course.
+
+    Parameters:
+    - track (Track): A list of AISMessage objects
+        representing the navigational path. Each AISMessage 
+        contains positional data necessary for angle calculation.
+    
+    - degrees (bool): A boolean flag indicating whether
+        the output should be in degrees or radians. If 
+        True, the output will be in degrees; if False, 
+        the output will be in radians. The default value 
+        is False.
+
+    Returns:
+    - float: The average absolute change of course of the 
+      track in degrees or radians. This value is the mean 
+      of the absolute differences between consecutive 
+      normalized angles along the track, where a larger 
+      value indicates a greater change of course.
+
+    Note:
+    - The function requires that the track has at least three 
+       AISMessage points to form at least one angle.
+    """
+    assert len(track) >= 3, "Track must have at least three messages."
+    aacog = np.pi - np.mean(angle_between(track))
+    return np.degrees(aacog) if degrees else aacog
