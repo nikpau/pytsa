@@ -165,13 +165,13 @@ class BoundingBox:
         """
         return (self.LONMAX-self.LONMIN)/(self.LATMAX-self.LATMIN)
 
-    def contains(self, position: Position) -> bool:
+    def contains(self, message: AISMessage) -> bool:
         """
         Check if a position is within the bounding box
         """
         return (
-            self.LATMIN <= position.lat <= self.LATMAX and
-            self.LONMIN <= position.lon <= self.LONMAX
+            self.LATMIN <= message.lat <= self.LATMAX and
+            self.LONMIN <= message.lon <= self.LONMAX
         )
 
 @dataclass
