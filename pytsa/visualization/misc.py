@@ -15,12 +15,38 @@ from pytsa import BoundingBox, TargetShip
 from pytsa.trajectories import inspect
 from pytsa.structs import Track
 from glob import glob
+from pathlib import Path
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from scipy.spatial import ConvexHull
 
 from . import plt, PLOT_FOLDER, mpl, COLORWHEEL_MAP
 from ..data.geometry import __path__ as geometry_path
 from ..tsea.targetship import Targets
+
+def _check_duplicate_file_name(filename: Path) -> Path:
+    """
+    Check if a file with the same name
+    already exists in the `PLOT_FOLDER`.
+    
+    If it does, append a number to the filename
+    and return the new filename.
+    
+    Parameters
+    ----------
+    filename : str
+        The filename to be checked.
+        
+    Returns
+    -------
+    str
+        The new filename.
+    """
+    if not (PLOT_FOLDER / filename).exists():
+        return PLOT_FOLDER / filename
+    i = 1
+    while (PLOT_FOLDER / f"{filename}_{i}").exists():
+        i += 1
+    return PLOT_FOLDER / f"{filename}_{i}"
 
 def _cvh_area(track: Track) -> float:
     """
@@ -79,7 +105,7 @@ def plot_coastline(extent: BoundingBox,
     ax.set_ylim(extent.LATMIN, extent.LATMAX)
     
     if save_plot:
-        plt.savefig(f"{PLOT_FOLDER}/coastline.png", dpi=300)
+        plt.savefig(_check_duplicate_file_name("coastline.png"), dpi=300)
     return None if not return_figure else fig
 
 def binned_heatmap(targets: Targets, 
@@ -167,7 +193,7 @@ def binned_heatmap(targets: Targets,
     
     
     plt.tight_layout()
-    plt.savefig(f"{PLOT_FOLDER}/heatmap.png",dpi=300)
+    plt.savefig(_check_duplicate_file_name("heatmap.png"),dpi=300)
     
 def plot_trajectories_on_map(ships: dict[int,TargetShip], 
                              extent: BoundingBox) -> None:
@@ -196,7 +222,7 @@ def plot_trajectories_on_map(ships: dict[int,TargetShip],
     ax.set_ylabel("Latitude")
     plt.title(f"Extracted Trajectories", size = 14)
     plt.tight_layout()
-    plt.savefig(f"{PLOT_FOLDER}/trajectories_map.png",dpi=600)
+    plt.savefig(_check_duplicate_file_name("trajectories_map.png"),dpi=600)
     plt.close()
 
 def pixelmap_average_smoothness(ships: dict[int,TargetShip],
@@ -329,7 +355,7 @@ def pixelmap_average_smoothness(ships: dict[int,TargetShip],
     ax.set_ylabel(r"$n_{msg}$",fontsize=18)
 
     plt.tight_layout()
-    plt.savefig(f"{PLOT_FOLDER}/pixelmap_avg_smoothness.pdf")
+    plt.savefig(_check_duplicate_file_name("pixelmap_avg_smoothness.pdf"))
     
 def cvh_range_comparison(ships: dict[int,TargetShip]) -> None:
     """
@@ -458,5 +484,5 @@ def cvh_range_comparison(ships: dict[int,TargetShip]) -> None:
             idx += 1
             
     plt.tight_layout()
-    plt.savefig(f"{PLOT_FOLDER}/cvhjitter.pdf")
+    plt.savefig(_check_duplicate_file_name("cvhjitter.pdf"))
     plt.close()    
