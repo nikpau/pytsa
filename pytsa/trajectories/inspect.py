@@ -1,9 +1,15 @@
 """
-Trajectory Splitter.
+Trajectory Inspector.
 ====================
 
-This module contains the class for splitting trajectories
-according to a set of rules.
+This module contains the Inspector class, which is used to filter
+trajectories based on a set of rules. The rules are defined in the
+:mod:`pytsa.trajectories.rules` module.
+
+The module also contains a set of functions that can be used to
+calculate the smoothness and change of course of a navigational
+track. These functions can be used as rules in the Inspector class.
+
 """
 import numpy as np
 import multiprocessing as mp
@@ -11,7 +17,7 @@ from copy import deepcopy
 
 from ..logger import logger
 from ..structs import Track
-from ..tsea.targetship import TargetShip, AISMessage, Targets
+from ..tsea.targetship import TargetShip, Targets
 from .rules import Recipe
 
 def print_rejection_rate(n_rejected: int, n_total: int) -> None:
@@ -25,18 +31,19 @@ def print_rejection_rate(n_rejected: int, n_total: int) -> None:
 
 class Inspector:
     """
-    The Inspector takes a dictionary of rules 
-    and applies them to the trajectories of 
-    a `Targets` type dictionary passed to it.
+    The Inspector is the central class for assessing 
+    properties of trajectories, based on a set of 
+    rules bundled in a Recipe object. The Inspector
+    class applies the rules to a set of target ships
+    and returns the accepted and rejected trajectories.
     
-    The dict passed to the inspector
-    is expected to have the following structure:
-        dict[MMSI,TargetVessel]
-    and will most likely be the output of the
-    :meth:`SearchAgent.get_all_ships()` method.
-    
-    For how to create a recipe, see the 
-    :mod:`pytsa.trajectories.rules` module.
+    Parameters:
+    - data (Targets): A dictionary of TargetShip objects, 
+        where the keys are the MMSI numbers of the target 
+        ships.
+        
+    - recipe (Recipe): A Recipe object containing the rules
+        to be applied to the trajectories.
     """
     def __init__(self, data: Targets, recipe: Recipe) -> None:
         self.data = data
@@ -44,7 +51,7 @@ class Inspector:
         self.rejected: Targets = {}
         self.accepted: Targets = {}
     
-    def inspect(self, njobs: int = 4) -> tuple[Targets,Targets]:
+    def inspect(self, njobs: int = 1) -> tuple[Targets,Targets]:
         """
         Inspects TargetShips in `data` and returns two dictionaries:
         - Accepted: Trajectories evalutating to False for the recipe
