@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 import ciso8601
 from typing import List, Union
-import numpy as np
 
 Latitude  = float
 Longitude = float
 MMSI = int
 UNIX_TIMESTAMP = int | float
-
-
 
 class NONAME_TYPE:
     pass
