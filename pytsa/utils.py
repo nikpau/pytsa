@@ -181,7 +181,7 @@ class DataLoader:
         """
         if len(dyn) != len(stat):
 
-            print(
+            logger.warning(
                 "Number of dynamic and static messages do not match."
                 f"Dynamic: {len(dyn)}, static: {len(stat)}\n"
                 "Processing only common files."
@@ -210,7 +210,7 @@ class DataLoader:
         """
         Preprocess the dynamic messages.
         """
-        # Apply custom filter
+        # Apply user-defined preprocessor and spatial filter
         df = self.preprocessor(df).query(self.spatial_filter).copy()
         # Convert timestamp to datetime
         df[BaseColumns.TIMESTAMP.value] = pd.to_datetime(
