@@ -135,11 +135,12 @@ def too_small_span(track: Track, span: float) -> bool:
     lon_span = np.ptp([v.lon for v in track])
     return lat_span > span and lon_span > span
 
-def convex_hull_area(track: Track, area: float) -> bool:
+def convex_hull_area(track: Track, area: float | tuple) -> bool:
     """
-    Return True if the area of the convex hull of the
-    track of the given vessel is smaller than `area`.
-    (Not used in the paper)
+    Reject a track if the area of the convex hull of the
+    track is smaller than `area`. If `area` is a tuple,
+    reject the track if the area is not within the range
+    of the tuple.
     """
     assert len(track) > 2, "Need at least 3 points to calculate convex hull"
     res = utm.from_latlon(
@@ -151,7 +152,17 @@ def convex_hull_area(track: Track, area: float) -> bool:
     # some tracks, e.g. if all points are 
     # colinear. In this case, we reject the track.
     try:
-        return ConvexHull(points).area < area
+        _cvharea = ConvexHull(points).area
+        if isinstance(area,float):
+            return _cvharea < area
+        elif isinstance(area,tuple):
+            lower, upper = area
+            return not lower < _cvharea < upper
+        else:
+            raise TypeError(
+                f"Expected area to be a float or tuple, "
+                f"got {type(area)}"
+            )
     except Exception as e:
         logger.error(
             f"Error in convex hull calculation: {e}"
