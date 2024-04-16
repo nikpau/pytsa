@@ -110,7 +110,8 @@ def plot_coastline(extent: BoundingBox,
 
 def binned_heatmap(targets: Targets, 
                    bb: BoundingBox,
-                   npixels: int) -> None:
+                   npixels: int,
+                   title: str = None) -> None:
     """
     Creates a 2D heatmap of messages 
     in the search area with resolution
@@ -129,6 +130,8 @@ def binned_heatmap(targets: Targets,
         Spatial extent to be plotted on the heatmap.
     npixels : int
         The number of pixels per dimension.
+    title : str
+        The title of the heatmap.
         
     """
     # Create a grid of pixels
@@ -189,7 +192,10 @@ def binned_heatmap(targets: Targets,
     
     ax.set_xlabel("Longitude")
     ax.set_ylabel("Latitude")
-    ax.set_title("Heatmap of messages")
+    if title:
+        ax.set_title(title)
+    else:
+        ax.set_title("Heatmap of messages")
     
     
     plt.tight_layout()
