@@ -10,7 +10,7 @@ from scipy.spatial import cKDTree
 from ..logger import logger
 from ..structs import (
     BoundingBox, TimePosition,
-    UNIX_TIMESTAMP
+    UNIX_TIMESTAMP, ShipType
 )
 from . import split
 from ..decoder.filedescriptor import (
@@ -124,9 +124,8 @@ class NeighborhoodTreeSearch:
 
         return filtered.iloc[res]
     
-
-    def _time_filter(self, 
-                     df: pd.DataFrame, 
+    @staticmethod
+    def _time_filter(df: pd.DataFrame, 
                      date: UNIX_TIMESTAMP, 
                      delta: int) -> pd.DataFrame:
         """
@@ -375,11 +374,12 @@ class TargetShipConstructor:
         Construct a single TargetVessel object from a given dataframe.
         """
         MMSI = int(dyn[Msg12318Columns.MMSI.value].iloc[0])
+        ts = dyn[BaseColumns.TIMESTAMP.value].iloc[0].to_pydatetime().timestamp()
         # Initialize TargetVessel object
         tv =  TargetShip(
             ts = None,
             mmsi=MMSI,
-            ship_type=self._get_ship_type(stat,MMSI),
+            ship_type=self._get_ship_type(stat,MMSI,ts),
             length=self._get_ship_length(stat,MMSI),
             tracks=[[]]
         )
@@ -605,11 +605,11 @@ class TargetShipConstructor:
             neighbors[Msg12318Columns.SPEED.value],
             neighbors[Msg12318Columns.COURSE.value]):
             
-            ts: pd.Timestamp # make type hinting happy
+            ts: UNIX_TIMESTAMP = ts.to_pydatetime().timestamp() # Convert to unix
             
             msg = AISMessage(
                 sender=mmsi,
-                timestamp=ts.to_pydatetime().timestamp(), # Convert to unix
+                timestamp=ts, # Convert to unix
                 lat=lat,lon=lon,
                 COG=cog,SOG=sog
             )
@@ -618,7 +618,7 @@ class TargetShipConstructor:
                 targets[mmsi] = TargetShip(
                     ts = tpos.timestamp if tpos is not None else None,
                     mmsi=mmsi,
-                    ship_type=self._get_ship_type(self.data_loader.static_data,mmsi),
+                    ship_type=self._get_ship_type(self.data_loader.static_data,mmsi,ts),
                     length=self._get_ship_length(self.data_loader.static_data,mmsi),
                     tracks=[[msg]]
                 )
@@ -676,23 +676,25 @@ class TargetShipConstructor:
 
     def _get_ship_type(self, 
                        static_msgs: pd.DataFrame,
-                       mmsi: int) -> list[int]:
+                       mmsi: int,
+                       date: UNIX_TIMESTAMP) -> ShipType:
         """
         Return the ship type of a given MMSI number.
 
         If more than one ship type is found, the first
         one is returned and a warning is logged.
         """
+        st = NeighborhoodTreeSearch._time_filter(static_msgs,date,15)
         st = static_msgs[static_msgs[Msg5Columns.MMSI.value] == mmsi]\
             [Msg5Columns.SHIPTYPE.value].values
         st:np.ndarray = np.unique(st)
         if st.size > 1:
             logger.debug(
-                f"More than one ship type found for MMSI {mmsi}. "
-                f"Found {st}.")
-            return st
-        else:
-            return list(st)
+                f"More than one ship type found for MMSI {mmsi} "
+                f"in a 30 minute window. Found {st}.\n"
+                f"Returning the first one.")
+        if st.size == 0: return ShipType.NOTAVAILABLE
+        return ShipType.from_value(st[0])
 
     def _get_ship_length(self, 
                          static_msgs: pd.DataFrame,
