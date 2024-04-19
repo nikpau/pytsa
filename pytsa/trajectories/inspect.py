@@ -143,11 +143,11 @@ class Inspector:
 
 def cosine_of_angle_between(track: Track) -> float:
     """
-    Return the cosine of the angle between a track
-    of AIS Messages.
+    Return the cosines for all three consecutive
+    AIS Messages in a track.
     """
     positions = np.array([(msg.lon,msg.lat) for msg in track])
-    v1 = positions[:-2] - positions[1:-1] # p0 - p1 
+    v1 = positions[1:-1] - positions[:-2] # p1 - p0 
     v2 = positions[2:] - positions[1:-1] # p2 - p1
     
     # Dot product
@@ -159,59 +159,59 @@ def cosine_of_angle_between(track: Track) -> float:
 
 def angle_between(track: Track) -> float:
     """
-    Return the angle between the track
-    of three AIS Messages.
+    Return the angles between each three consecutive
+    AIS Messages in a track.
     """
     _cos = cosine_of_angle_between(track)        
     return np.arccos(np.round(_cos,6)) # Round to avoid floating point errors
     
-def average_smoothness(track: Track) -> float:
-    """
-    Calculate the average smoothness of a navigational 
-    track.
+# def average_smoothness(track: Track) -> float:
+#     """
+#     Calculate the average smoothness of a navigational 
+#     track.
 
-    This function computes the average smoothness of a 
-    path represented  by a list of AISMessage objects.  
-    It evaluates the smoothness based on the angles 
-    formed at each point along the path, where each 
-    angle is determined by a sequence of three consecutive 
-    AISMessage points. The smoothness is a measure of 
-    how straight or curved the path is, with larger 
-    angles indicating a smoother path.
+#     This function computes the average smoothness of a 
+#     path represented  by a list of AISMessage objects.  
+#     It evaluates the smoothness based on the angles 
+#     formed at each point along the path, where each 
+#     angle is determined by a sequence of three consecutive 
+#     AISMessage points. The smoothness is a measure of 
+#     how straight or curved the path is, with larger 
+#     angles indicating a smoother path.
 
-    The angle at each point is normalized by dividing it 
-    by π, with the function 'angle_between' used to 
-    calculate these angles. Since 'angle_between' returns 
-    values from 0 to π, the normalized angles will range 
-    from 0 (representing a U-turn)  to 1 (representing a 
-    straight line).
+#     The angle at each point is normalized by dividing it 
+#     by π, with the function 'angle_between' used to 
+#     calculate these angles. Since 'angle_between' returns 
+#     values from 0 to π, the normalized angles will range 
+#     from 0 (representing a U-turn)  to 1 (representing a 
+#     straight line).
 
-    Parameters:
-    - track (Track): A list of AISMessage objects 
-      representing the navigational path. Each AISMessage 
-      contains positional data necessary for angle calculation.
+#     Parameters:
+#     - track (Track): A list of AISMessage objects 
+#       representing the navigational path. Each AISMessage 
+#       contains positional data necessary for angle calculation.
 
-    Returns:
-    - float: The average smoothness of the track, 
-      represented as a float. This value is the mean 
-      of the normalized angles along the track, where 
-      a larger values indicates a smoother track.
+#     Returns:
+#     - float: The average smoothness of the track, 
+#       represented as a float. This value is the mean 
+#       of the normalized angles along the track, where 
+#       a larger values indicates a smoother track.
 
-    Note:
-    - The function assumes that the track has at least three 
-       AISMessage points to form at least one angle. If the 
-       track has fewer than three points, the behavior of the 
-       function is unspecified.
-    """
-    if len(track) < 3:
-        raise ValueError(
-            "Average smoothness requires at "
-            "least three messages per track. "
-            "{} were given".format(len(track))
-        )
-    angles = angle_between(track)
-    normalized_angles = (angles / np.pi)
-    return np.mean(normalized_angles)
+#     Note:
+#     - The function assumes that the track has at least three 
+#        AISMessage points to form at least one angle. If the 
+#        track has fewer than three points, the behavior of the 
+#        function is unspecified.
+#     """
+#     if len(track) < 3:
+#         raise ValueError(
+#             "Average smoothness requires at "
+#             "least three messages per track. "
+#             "{} were given".format(len(track))
+#         )
+#     angles = angle_between(track)
+#     normalized_angles = (angles / np.pi)
+#     return np.mean(normalized_angles)
 
 def average_absolute_change_of_course(track: Track, degrees: bool = False) -> float:
     """
@@ -251,5 +251,5 @@ def average_absolute_change_of_course(track: Track, degrees: bool = False) -> fl
        AISMessage points to form at least one angle.
     """
     assert len(track) >= 3, "Track must have at least three messages."
-    aacog = np.pi - np.mean(angle_between(track))
+    aacog = np.mean(angle_between(track))
     return np.degrees(aacog) if degrees else aacog
