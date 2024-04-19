@@ -206,6 +206,16 @@ class DataLoader:
             "Dynamic and static messages are not in the same order."
 
         return dyn, stat
+
+    def _date_preprocessor(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Preprocess the date column of `df` to turn it into 
+        pandas datetime objects.
+        """
+        df[BaseColumns.TIMESTAMP.value] = pd.to_datetime(
+            df[BaseColumns.TIMESTAMP.value]
+        )
+        return df
     
     def _dynamic_preprocessor(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -214,8 +224,7 @@ class DataLoader:
         # Apply user-defined preprocessor and spatial filter
         df = self.preprocessor(df).query(self.spatial_filter).copy()
         # Convert timestamp to datetime
-        df[BaseColumns.TIMESTAMP.value] = pd.to_datetime(
-                df[BaseColumns.TIMESTAMP.value])
+        df = self._date_preprocessor(df)
         # Drop duplicates form multiple base stations
         df = df.drop_duplicates(
                 subset=[
@@ -223,6 +232,14 @@ class DataLoader:
                     Msg12318Columns.MMSI.value
                 ], keep="first"
             )
+        return df
+    
+    def _static_preprocessor(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Preprocess the static messages.
+        """
+        # Convert timestamp to datetime
+        df = self._date_preprocessor(df)
         return df
     
     def from_raw(self, raw_dyn: Path, raw_stat: Path) -> tuple[pd.DataFrame,pd.DataFrame]:
@@ -260,6 +277,7 @@ class DataLoader:
             d = pd.read_csv(dyn_path,sep=",",usecols=self.dynamic_columns)
             d = self._dynamic_preprocessor(d)
             s = pd.read_csv(stat_path,sep=",",usecols=self.static_columns)
+            s = self._static_preprocessor(s)
             self.dynamic_data = pd.concat([self.dynamic_data,d])
             self.static_data = pd.concat([self.static_data,s])
         logger.info("Done.")
@@ -315,7 +333,8 @@ class DataLoader:
                         f"Processing chunk {i+1} of file "
                         f"{dyn_path.stem}"
                     )
-                    dc = self._dynamic_preprocessor(dc)            
+                    dc = self._dynamic_preprocessor(dc)
+                    sc = self._static_preprocessor(sc)     
                     yield dc, sc
 
 # DEPRECATED v ================================================================
