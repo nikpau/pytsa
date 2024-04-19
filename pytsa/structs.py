@@ -22,6 +22,17 @@ NOINDEX = NOINDEX_TYPE()
 class ShellError(Exception):
     pass
 
+def _mflatten(l):
+    """
+    Flatten a mixed list
+    of numbers and lists
+    """
+    for el in l:
+        if isinstance(el, (list,range)):
+            yield from _mflatten(el)
+        else:
+            yield el
+
 @dataclass
 class AISMessage:
     """
@@ -91,14 +102,14 @@ class ShipType(Enum):
     PASSENGER = range(60,70)
     CARGO = range(70,80)
     TANKER = range(80,90)
-    OTHER = range(90,100)
+    OTHER = list(_mflatten([33,34,50,51,list(range(52,60)),list(range(90,100))]))
     
-    def from_value(self, value: int) -> ShipType:
+    def from_value(value: int) -> ShipType:
         """
         Return the ship type from a value
         """
         for st in ShipType:
-            if isinstance(st.value, range):
+            if isinstance(st.value, (list,range)):
                 if value in st.value:
                     return st
             else:         
