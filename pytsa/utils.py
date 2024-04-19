@@ -117,6 +117,7 @@ class DataLoader:
     ]
     
     static_columns = [
+        BaseColumns.TIMESTAMP.value,
         Msg5Columns.MMSI.value,
         Msg5Columns.SHIPTYPE.value,
         Msg5Columns.TO_BOW.value,
