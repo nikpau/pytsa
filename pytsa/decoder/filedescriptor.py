@@ -12,10 +12,9 @@ from enum import Enum
 
 class BaseColumns(Enum):
     """
-    For the decoder to work, both the
-    Dynamic and Static source files
-    must feature the following identical 
-    column names.
+    Column names that must be present in both
+    the dynamic and static source files,
+    otherwise the decoder will raise an error.
     """
     __order__ = (
         "TIMESTAMP MESSAGE_ID "
