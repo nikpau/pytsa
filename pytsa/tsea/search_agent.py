@@ -219,6 +219,9 @@ class SearchAgent:
             preprocessor,
             spatial_filter
         )
+        
+        # Trajectory Splitter
+        self.splitter = split.Splitter()
 
         # Maximum number of target ships to extract
         self.max_tgt_ships = max_tgt_ships
@@ -237,7 +240,8 @@ class SearchAgent:
         )
         
         self.constructor = TargetShipConstructor(
-            self.data_loader
+            self.data_loader,
+            self.splitter
         )
         
         # Flag indicating whether the input data
@@ -314,6 +318,7 @@ class SearchAgent:
             njobs,skip_tsplit
         )
         self.constructor.print_trex_stats()
+        self.splitter.print_split_stats()
         return targets
 
     def _interpolate_trajectories(self, 
@@ -346,9 +351,12 @@ class TargetShipConstructor:
             Constructs TargetVessel objects from 
             a given DataFrame.
     """
-    def __init__(self, data_loader: DataLoader) -> None:
+    def __init__(self, 
+                 data_loader: DataLoader,
+                 splitter: split.Splitter) -> None:
         
         self.data_loader = data_loader
+        self.splitter = splitter
         
         # Statistics
         self._n_split_points = 0
@@ -529,7 +537,7 @@ class TargetShipConstructor:
                 if i == 0:
                     rejoined.append(track)
                     continue
-                if not split.is_split_point(rejoined[-1][-1],track[0]):
+                if not self.splitter.is_split_point(rejoined[-1][-1],track[0]):
                     rejoined[-1].extend(track)
                     self._n_rejoined_tracks += 1
                 else:
@@ -557,7 +565,7 @@ class TargetShipConstructor:
                 _itracks = [] # Intermediary track
                 tstartidx = 0
                 for i, (msg_t0,msg_t1) in enumerate(pairwise(track)):
-                    if split.is_split_point(msg_t0,msg_t1):
+                    if self.splitter.is_split_point(msg_t0,msg_t1):
                         _itracks.append(track[tstartidx:i+1])
                         tstartidx = i+1
                         self._n_split_points += 1
