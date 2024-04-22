@@ -196,13 +196,16 @@ class Splitter:
         Pipeline function for checking whether a given
         AIS Message pair is a valid split point.
         """
-        return (
-            self.deviation_from_reported_too_large(msg_t0,msg_t1) or
-            self.time_difference_too_large(msg_t0,msg_t1) or
-            self.distance_too_large(msg_t0,msg_t1) or
-            self.speed_change_too_large(msg_t0,msg_t1) or
-            self.turning_rate_too_large(msg_t0,msg_t1)
-        )
+        split = []
+        for f in (
+            self.deviation_from_reported_too_large,
+            self.time_difference_too_large,
+            self.distance_too_large,
+            self.speed_change_too_large,
+            self.turning_rate_too_large
+        ):
+            split.append(f(msg_t0,msg_t1))
+        return any(split)
         
     def print_split_stats(self) -> None:
         """
