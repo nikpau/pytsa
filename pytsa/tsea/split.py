@@ -4,9 +4,9 @@ Auxiliary functions for determining trajectory splitting points.
 import numpy as np
 import pickle
 
-from ..structs import AISMessage
-from .. import utils
-from ..data.quantiles import __path__ as _DATA_DIR
+from pytsa.structs import AISMessage
+from pytsa import utils
+from pytsa.data.quantiles import __path__ as _DATA_DIR
 
 # Load empirical quantiles
 # from pickle file. The quantiles
@@ -16,8 +16,8 @@ from ..data.quantiles import __path__ as _DATA_DIR
 DATA_DIR = _DATA_DIR[0]
 with open(f"{DATA_DIR}/dquants.pkl","rb") as f:
     _DQUANTILES = pickle.load(f)
-with open(f"{DATA_DIR}/hquants.pkl","rb") as f:
-    _HQUANTILES = pickle.load(f)
+with open(f"{DATA_DIR}/trquants.pkl","rb") as f:
+    _TRQUANTILES = pickle.load(f)
 with open(f"{DATA_DIR}/squants.pkl","rb") as f:
     _SQUANTILES = pickle.load(f)
 with open(f"{DATA_DIR}/diffquants.pkl","rb") as f:
@@ -29,12 +29,12 @@ with open(f"{DATA_DIR}/tquants.pkl","rb") as f:
 # with the quantile as key and the
 # quantile value as value. 
 # ==================================
-_NQ = 1001 # Number of quantiles
-_QVALUES = np.linspace(0,100,1001) # Quantile values
+_NQ = 10001 # Number of quantiles
+_QVALUES = np.linspace(0,100,_NQ) # Quantile values
 # Empirical quantiles for the
-# change in heading [°] between two 
+# turning rate [°/s] between two 
 # consecutive messages.
-HQUANTILES = {_QVALUES[k]: _HQUANTILES[k] for k in range(_NQ)}
+TRQUANTILES = {_QVALUES[k]: _TRQUANTILES[k] for k in range(_NQ)}
 
 # Empirical quantiles for the
 # change in speed [kn] between two
@@ -72,17 +72,17 @@ def speed_change_too_large(msg_t0: AISMessage,
         abs(msg_t1.SOG - msg_t0.SOG) > SQUANTILES[SINGLE_TAIL_CTF]
     )
     
-def heading_change_too_large(msg_t0: AISMessage, 
-                             msg_t1: AISMessage) -> bool:
+def turning_rate_too_large(msg_t0: AISMessage, 
+                           msg_t1: AISMessage) -> bool:
     """
     Return True if the change in heading between two AIS Messages
     is larger than the 95% quantile of the heading change distribution.
     """
-    col = HQUANTILES[DOUBLE_TAIL_CTF_L]
-    cou = HQUANTILES[DOUBLE_TAIL_CTF_U]
-    return not (
-        col < utils.heading_change(msg_t0.COG,msg_t1.COG) < cou
-    )
+    col = TRQUANTILES[DOUBLE_TAIL_CTF_L]
+    cou = TRQUANTILES[DOUBLE_TAIL_CTF_U]
+    hc = utils.heading_change(msg_t0.COG,msg_t1.COG)
+    td = msg_t1.timestamp - msg_t0.timestamp
+    return not col < (hc/td) < cou
 
 def distance_too_large(msg_t0: AISMessage, 
                        msg_t1: AISMessage) -> bool:
@@ -150,5 +150,5 @@ def is_split_point(msg_t0: AISMessage,
         time_difference_too_large(msg_t0,msg_t1) or
         distance_too_large(msg_t0,msg_t1) or
         speed_change_too_large(msg_t0,msg_t1) or
-        heading_change_too_large(msg_t0,msg_t1)
+        turning_rate_too_large(msg_t0,msg_t1)
     )
