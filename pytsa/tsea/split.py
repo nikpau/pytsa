@@ -58,11 +58,6 @@ RMCSQUANTILES = {_QVALUES[k]: _RMCSQUANTILES[k] for k in range(_NQ)}
 # consecutive messages.
 TQUANTILES = {_QVALUES[k]: _TQUANTILES[k] for k in range(_NQ)}
 
-# Cutoff values for the quantiles
-SINGLE_TAIL_CTF = 95.0
-DOUBLE_TAIL_CTF_L = 2.5
-DOUBLE_TAIL_CTF_U = 97.5
-
 
 class Splitter:
     """
@@ -71,15 +66,25 @@ class Splitter:
     Besides containing the functions for determining split points,
     the class also tracks internal statistics about the split points
     found.
+    
+    Parameters:
+    - alpha (float): The significance level for the quantiles used
+        in the split point detection. Default is 0.05.
     """
     
-    def __init__(self):
+    def __init__(self, alpha: float = 0.05) -> None:
         self._split_points = []
         self._speed_change = 0
         self._turning_rate = 0
         self._distance = 0
         self._deviation = 0
         self._time_difference = 0
+
+        # Cutoff values for the quantiles
+        self.ST = 1 - alpha
+        self.DTL = alpha / 2
+        self.DTU = 1 - self.DTL
+
         
     def __len__(self) -> int:
         return len(self._split_points)
@@ -93,7 +98,7 @@ class Splitter:
         is larger than the 95% quantile of the speed change distribution.
         """
         too_large =  (
-            abs(msg_t1.SOG - msg_t0.SOG) > SQUANTILES[SINGLE_TAIL_CTF]
+            abs(msg_t1.SOG - msg_t0.SOG) > SQUANTILES[self.ST]
         )
         if too_large:
             self._speed_change += 1
@@ -107,8 +112,8 @@ class Splitter:
         Return True if the change in heading between two AIS Messages
         is larger than the 95% quantile of the heading change distribution.
         """
-        col = TRQUANTILES[DOUBLE_TAIL_CTF_L]
-        cou = TRQUANTILES[DOUBLE_TAIL_CTF_U]
+        col = TRQUANTILES[self.DTL]
+        cou = TRQUANTILES[self.DTU]
         hc = utils.heading_change(msg_t0.COG,msg_t1.COG)
         td = msg_t1.timestamp - msg_t0.timestamp
         too_large = not col < (hc/td) < cou
@@ -126,7 +131,7 @@ class Splitter:
         """
         d = utils.greater_circle_distance(
             msg_t0.lon,msg_t0.lat,msg_t1.lon,msg_t1.lat,method="haversine")
-        too_large = d > DQUANTILES[SINGLE_TAIL_CTF]
+        too_large = d > DQUANTILES[self.ST]
         if too_large:
             self._distance += 1
             return too_large
@@ -165,8 +170,8 @@ class Splitter:
             """
             msgs = (msg_t0,msg_t1)
             diff = self.avg_speed(*msgs) - self.speed_from_position(*msgs)
-            col = RMCSQUANTILES[DOUBLE_TAIL_CTF_L]
-            cou = RMCSQUANTILES[DOUBLE_TAIL_CTF_U]
+            col = RMCSQUANTILES[self.DTL]
+            cou = RMCSQUANTILES[self.DTU]
             too_large = not col < diff < cou
             if too_large:
                 self._deviation += 1
@@ -180,7 +185,7 @@ class Splitter:
             Return True if the time difference between two AIS Messages
             is larger than the 95% quantile of the time difference distribution.
             """
-            co = TQUANTILES[SINGLE_TAIL_CTF]
+            co = TQUANTILES[self.ST]
             too_large = not (
                 co > (msg_t1.timestamp - msg_t0.timestamp)
             )
@@ -224,7 +229,7 @@ class Splitter:
         logger.info(f"{'Speed change too large':<30}{self._speed_change:>20}")
         logger.info(f"{'Turning rate too large':<30}{self._turning_rate:>20}")
         logger.info(f"{'Distance too large':<30}{self._distance:>20}")
-        logger.info(f"{'Deviation between reported and calculated speed too large':<30}{self._deviation:>20}")
+        logger.info(f"{'Rep. - Calc. speed too large':<30}{self._deviation:>20}")
         logger.info(f"{'Time difference too large':<30}{self._time_difference:>20}")
         logger.info(separator)
         

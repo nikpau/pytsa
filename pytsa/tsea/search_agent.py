@@ -219,9 +219,6 @@ class SearchAgent:
             preprocessor,
             spatial_filter
         )
-        
-        # Trajectory Splitter
-        self.splitter = split.Splitter()
 
         # Maximum number of target ships to extract
         self.max_tgt_ships = max_tgt_ships
@@ -237,11 +234,6 @@ class SearchAgent:
             self.data_loader,
             self.time_delta,
             self.max_tgt_ships
-        )
-        
-        self.constructor = TargetShipConstructor(
-            self.data_loader,
-            self.splitter
         )
         
         # Flag indicating whether the input data
@@ -286,13 +278,19 @@ class SearchAgent:
             "Interpolation method must be either 'linear', 'spline' or 'auto'"
         # Get neighbors
         neighbors = self.neighborhood.get_neighbors(tpos,search_radius)
-        tgts = self.constructor._sp_construct_target_vessels(neighbors,tpos,True)
+
+        constructor = TargetShipConstructor(
+            self.data_loader,
+            split.Splitter()
+        )
+        tgts = constructor._sp_construct_target_vessels(neighbors,tpos,True)
         # Contruct Splines for all target ships
         tgts = self._interpolate_trajectories(tgts,mode=interpolation)
         return tgts
     
     def extract_all(self,
                     njobs: int = 4, 
+                    alpha: float = 0.05,
                     skip_tsplit: bool = False) -> Targets:
         """
         Extracts a dictionary of all target ships in the
@@ -303,6 +301,9 @@ class SearchAgent:
         ----------
         njobs: int
             Number of jobs to use for multiprocessing.
+        alpha: float
+            The significance level for the quantiles used
+            in the split point detection. Default is 0.05.
         skip_tsplit: bool
             If True, the split-point method is not used
             to split the tracks of the target ships.
@@ -314,11 +315,16 @@ class SearchAgent:
         --------
         dict: A dictionary of dict[MMSI,TargetShip]. 
         """
-        targets = self.constructor._mp_construct_target_vessels(
+        splitter = split.Splitter(alpha)
+        constructor = TargetShipConstructor(
+            self.data_loader,
+            splitter
+        )
+        targets = constructor._mp_construct_target_vessels(
             njobs,skip_tsplit
         )
-        self.constructor.print_trex_stats()
-        self.splitter.print_split_stats()
+        constructor.print_trex_stats()
+        splitter.print_split_stats()
         return targets
 
     def _interpolate_trajectories(self, 
@@ -345,6 +351,10 @@ class TargetShipConstructor:
         `data_loader`: 
             An instance of the `pytsa.utils.DataLoader` 
             class used to load AIS message data.
+        `splitter`:
+            An instance of the `pytsa.tsea.split.Splitter`
+            class used to determine split points in
+            trajectories.
 
     Methods:
         `construct_target_vessels`: 
@@ -617,7 +627,7 @@ class TargetShipConstructor:
             
             msg = AISMessage(
                 sender=mmsi,
-                timestamp=ts, # Convert to unix
+                timestamp=ts,
                 lat=lat,lon=lon,
                 COG=cog,SOG=sog
             )
@@ -631,8 +641,8 @@ class TargetShipConstructor:
                     tracks=[[msg]]
                 )
             else:
-                # Split track if change in speed or heading is too large
-                if split.is_split_point(targets[mmsi].tracks[-1][-1],msg):
+                # Split track
+                if self.splitter.is_split_point(targets[mmsi].tracks[-1][-1],msg):
                     targets[mmsi].tracks.append([])
                 v = targets[mmsi]
                 v.tracks[-1].append(msg)
