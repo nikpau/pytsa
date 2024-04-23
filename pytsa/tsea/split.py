@@ -31,7 +31,10 @@ with open(f"{DATA_DIR}/tquants.pkl","rb") as f:
 # quantile value as value. 
 # ==================================
 _NQ = 10001 # Number of quantiles
-_QVALUES = np.linspace(0,100,_NQ) # Quantile values
+# We have to round the quantiles to
+# avoid floating point errors when using
+# them as keys in dictionaries.
+_QVALUES = np.round(np.linspace(0,1,_NQ),4) # Quantile values
 # Empirical quantiles for the
 # turning rate [°/s] between two 
 # consecutive messages.
