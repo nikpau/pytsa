@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from itertools import cycle
-import math
+import numpy as np
 from pathlib import Path
 from threading import Thread
 import time
@@ -19,6 +19,32 @@ from .decoder import decode_from_file
 from .decoder.filedescriptor import (
     BaseColumns, Msg12318Columns, Msg5Columns
 )
+try:
+    import rhaversine
+    haversine: Callable = rhaversine.haversine
+except ImportError:
+    logger.warning(
+        "Shared library 'rhaversine.so' not found. "
+        "Using numpy implementation."
+    )
+    def haversine(lon1, lat1, lon2, lat2, miles = True):
+        """
+        Calculate the great circle distance in kilometers between two points 
+        on the earth (specified in decimal degrees)
+        """
+        # convert decimal degrees to radians 
+        lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
+
+        # haversine formula 
+        dlon = lon2 - lon1 
+        dlat = lat2 - lat1 
+        a = (
+            np.sin(dlat/2)**2 + np.cos(lat1) * 
+            np.cos(lat2) * np.sin(dlon/2)**2
+            )
+        c = 2 * np.arcsin(np.sqrt(a)) 
+        r = 3956 if miles else 6371 # Radius of earth in kilometers or miles
+        return c * r
 
 def m2nm(m: float) -> float:
     """Convert meters to nautical miles"""
@@ -44,25 +70,6 @@ def vincenty(lon1, lat1, lon2, lat2, miles = True) -> float:
     p1 = (lat1,lon1)
     p2 = (lat2,lon2)
     return _vincenty.vincenty_inverse(p1,p2,miles=miles)
-
-def haversine(lon1, lat1, lon2, lat2, miles = True):
-    """
-    Calculate the great circle distance in kilometers between two points 
-    on the earth (specified in decimal degrees)
-    """
-    # convert decimal degrees to radians 
-    lon1, lat1, lon2, lat2 = map(math.radians, [lon1, lat1, lon2, lat2])
-
-    # haversine formula 
-    dlon = lon2 - lon1 
-    dlat = lat2 - lat1 
-    a = (
-        math.sin(dlat/2)**2 + math.cos(lat1) * 
-        math.cos(lat2) * math.sin(dlon/2)**2
-        )
-    c = 2 * math.asin(math.sqrt(a)) 
-    r = 3956 if miles else 6371 # Radius of earth in kilometers or miles
-    return c * r
 
 def greater_circle_distance(lon1, lat1, lon2, lat2, miles = True, method = "haversine"):
     """
@@ -106,6 +113,9 @@ class DataLoader:
     
     # Fraction of the file to load
     chunkfrac = 1/3
+
+    #Engine to use for decoding
+    ENGINE = "pyarrow"
     
     dynamic_columns = [
         BaseColumns.TIMESTAMP.value,
@@ -274,9 +284,9 @@ class DataLoader:
         self.static_data = pd.DataFrame()
         for dyn_path, stat_path in zip(self.sdyn,self.sstat):
             logger.info(f"Loading {stat_path.stem} and {dyn_path.stem}")
-            d = pd.read_csv(dyn_path,sep=",",usecols=self.dynamic_columns)
+            d = pd.read_csv(dyn_path,sep=",",usecols=self.dynamic_columns,engine=DataLoader.ENGINE)
             d = self._dynamic_preprocessor(d)
-            s = pd.read_csv(stat_path,sep=",",usecols=self.static_columns)
+            s = pd.read_csv(stat_path,sep=",",usecols=self.static_columns,engine=DataLoader.ENGINE)
             s = self._static_preprocessor(s)
             self.dynamic_data = pd.concat([self.dynamic_data,d])
             self.static_data = pd.concat([self.static_data,s])
@@ -325,8 +335,8 @@ class DataLoader:
                 yield self.from_raw(dyn_path, stat_path)
             else:
                 # Create a generator of pandas DataFrames
-                dyniter = pd.read_csv(dyn_path,**dyn_options)
-                statiter = pd.read_csv(stat_path,**stat_options)
+                dyniter = pd.read_csv(dyn_path,**dyn_options,engine=DataLoader.ENGINE)
+                statiter = pd.read_csv(stat_path,**stat_options,engine=DataLoader.ENGINE)
                 
                 for i, (dc,sc) in enumerate(zip(dyniter,statiter)):
                     logger.info(

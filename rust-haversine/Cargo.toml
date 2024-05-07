@@ -1,0 +1,10 @@
+[package]
+name = "rust-haversine"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pyo3 = { version = "0.21.2", features = ["extension-module"] }
+
+[lib]
+crate-type = ["cdylib"]  # This tells Rust to compile the library as a dynamic library
