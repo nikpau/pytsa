@@ -375,15 +375,35 @@ class TargetShipConstructor:
         self._n_obs_raw = 0
         self._n_trajectories = 0
 
+    def _distribute(self, df: pd.DataFrame, nparts: int) -> list[pd.DataFrame]:
+        """
+        Distribute a given dataframe into `nparts`
+        equally sized smaller data frames.
+        
+        Parameters:
+        -----------------
+        df (pd.DataFrame): Pandas DataFrame containing the
+            data to be split
+        nparts (int): number of parts into which `df` is
+            going to be split.
+    
+        Returns:
+        -----------------
+        List of DataFrames: A list of DataFrames, 
+        each being a part of the original DataFrame.
+        """
+        # Check if the DataFrame can be split 
+        # into the desired number of parts
+        if nparts <= 0 or df is None:
+            raise ValueError(
+                "Number of parts must be a positive"
+                "integer and DataFrame must not be None."
+            )
 
-    def _distribute(self, df: pd.DataFrame) -> list[pd.DataFrame]:
-        """
-        Distribute a given dataframe into smaller
-        dataframes, each containing only messages
-        from a single MMSI.
-        """
-        mmsis = df[Msg12318Columns.MMSI.value].unique()
-        return [df[df[Msg12318Columns.MMSI.value] == mmsi] for mmsi in mmsis]
+        # Use numpy.array_split to split the 
+        # DataFrame into nearly equal parts
+        return list(np.array_split(df, nparts))
+        
     
     def _impl_construct_target_vessel(self, 
                                       dyn: pd.DataFrame,
@@ -444,14 +464,17 @@ class TargetShipConstructor:
         self.reset_stats()
         singles: list[Targets] = []
         with mp.Pool(njobs) as pool:
+            results = []
             for dyn, stat in self.data_loader.iterate_chunks():
                 self._n_obs_raw += len(dyn)
-                single_frames = self._distribute(dyn)
-                res = pool.starmap(
+                single_frames = self._distribute(dyn,njobs)
+                res = pool.starmap_async(
                     self._impl_construct_target_vessel,
                     [(dframe,stat) for dframe in single_frames]
                 )
-                singles.extend(res)
+                results.append(res)
+            for result in results:
+                singles.extend(result.get())
         targets = self._merge_targets(*singles)
         targets = self._remove_duplicates(targets)
         if not skip_tsplit:
