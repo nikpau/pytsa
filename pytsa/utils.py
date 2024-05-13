@@ -22,10 +22,10 @@ from .decoder.filedescriptor import (
 try:
     import rhaversine
     haversine: Callable = rhaversine.haversine
-except ImportError:
+except ImportError as IE:
     logger.warning(
-        "Shared library 'rhaversine.so' not found. "
-        "Using numpy implementation."
+        "Shared library 'rhaversine.so' could not be loaded. "
+        "Using numpy implementation.\n{}".format(IE)
     )
     def haversine(lon1, lat1, lon2, lat2, miles = True):
         """
