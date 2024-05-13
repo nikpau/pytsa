@@ -335,8 +335,8 @@ class DataLoader:
                 yield self.from_raw(dyn_path, stat_path)
             else:
                 # Create a generator of pandas DataFrames
-                dyniter = pd.read_csv(dyn_path,**dyn_options,engine=DataLoader.ENGINE)
-                statiter = pd.read_csv(stat_path,**stat_options,engine=DataLoader.ENGINE)
+                dyniter = pd.read_csv(dyn_path,**dyn_options)
+                statiter = pd.read_csv(stat_path,**stat_options)
                 
                 for i, (dc,sc) in enumerate(zip(dyniter,statiter)):
                     logger.info(
