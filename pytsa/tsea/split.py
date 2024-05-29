@@ -113,7 +113,7 @@ class Splitter:
                                msg_t1: AISMessage) -> bool:
         """
         Return True if the change in heading between two AIS Messages
-        is larger than the 95% quantile of the heading change distribution.
+        is larger than the alpha-quantile of the heading change distribution.
         """
         col = TRQUANTILES[self.DTL]
         cou = TRQUANTILES[self.DTU]
@@ -130,7 +130,7 @@ class Splitter:
                            msg_t1: AISMessage) -> bool:
         """
         Return True if the spatial difference between two AIS Messages
-        is larger than the 95% quantile of the distance distribution.
+        is larger than the alpha-quantile of the distance distribution.
         """
         d = utils.greater_circle_distance(
             msg_t0.lon,msg_t0.lat,msg_t1.lon,msg_t1.lat,method="haversine")
@@ -162,13 +162,14 @@ class Splitter:
         return (msg_t0.SOG + msg_t1.SOG) / 2
 
 
-    def deviation_from_reported_too_large(self,
-                               msg_t0: AISMessage,
-                                           msg_t1: AISMessage) -> bool:
+    def deviation_from_reported_too_large(
+        self,
+        msg_t0: AISMessage,
+        msg_t1: AISMessage) -> bool:
             """
             Return True if the difference between the reported speed [kn] 
             from the AIS record and the speed calculated from the spatial 
-            difference and time difference is larger than the 99% quantile 
+            difference and time difference is larger than the alpha-quantile 
             of the deviation distribution.
             """
             msgs = (msg_t0,msg_t1)
