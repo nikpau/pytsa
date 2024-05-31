@@ -193,20 +193,20 @@ class SearchAgent:
         # Exhaust generators 
         # This is possible if Path().glob() is used
         if isinstance(dynamic_paths, Generator):
-            dynamic_paths = list(dynamic_paths)
+            self.dynamic_paths = list(dynamic_paths)
         elif not isinstance(dynamic_paths,list):
-            dynamic_paths = [dynamic_paths]
-            dynamic_paths = [Path(p) for p in dynamic_paths]
+            self.dynamic_paths = [dynamic_paths]
+            self.dynamic_paths = [Path(p) for p in dynamic_paths]
         else:
-            dynamic_paths = [Path(p) for p in dynamic_paths]
+            self.dynamic_paths = [Path(p) for p in dynamic_paths]
         
         if isinstance(static_paths, Generator):
-            static_paths = list(static_paths)
+            self.static_paths = list(static_paths)
         elif not isinstance(static_paths,list):
-            static_paths = [static_paths]
-            static_paths = [Path(p) for p in static_paths]
+            self.static_paths = [static_paths]
+            self.static_paths = [Path(p) for p in static_paths]
         else:
-            static_paths = [Path(p) for p in static_paths]
+            self.static_paths = [Path(p) for p in static_paths]
 
         self.high_accuracy = high_accuracy
         
@@ -217,12 +217,15 @@ class SearchAgent:
             f"{Msg12318Columns.LAT.value} < {frame.LATMAX}"
         )
 
+        self.date_range = date_range
+        self.preprocessor = preprocessor
+        self.spatial_filter = spatial_filter
         self.data_loader = DataLoader(
-            copy(dynamic_paths),
-            copy(static_paths),
-            date_range,
-            preprocessor,
-            spatial_filter
+            copy(self.dynamic_paths),
+            copy(self.static_paths),
+            self.date_range,
+            self.preprocessor,
+            self.spatial_filter
         )
 
         # Maximum number of target ships to extract
@@ -330,6 +333,16 @@ class SearchAgent:
         )
         constructor.print_trex_stats()
         splitter.print_split_stats()
+        
+        # Reset data loader since the generators
+        # are exhausted.
+        self.data_loader = DataLoader(
+            copy(self.dynamic_paths),
+            copy(self.static_paths),
+            self.date_range,
+            self.preprocessor,
+            self.spatial_filter
+        )
         return targets
 
     def _interpolate_trajectories(self, 
