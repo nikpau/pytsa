@@ -20,7 +20,7 @@ from .targetship import (
     TargetShip, AISMessage, 
     InterpolationError, Track, Targets
 )
-from ..utils import DataLoader
+from ..utils import DataLoader, DateRange
 
 def _identity(x):
     return x
@@ -155,9 +155,10 @@ class SearchAgent:
     """
     
     def __init__(self, 
-                 dynamic_paths: Union[Path,List[Path]],
                  frame: BoundingBox,
+                 dynamic_paths: Union[Path,List[Path]],
                  static_paths: Union[Path,List[Path]],
+                 date_range: DateRange,
                  max_tgt_ships: int = 200,
                  preprocessor: Callable[[pd.DataFrame],pd.DataFrame] = _identity,
                  decoded: bool = True,
@@ -172,6 +173,8 @@ class SearchAgent:
                        containing AIS messages of type 1,2,3 and 18.
         static_paths: path or list of paths to a csv file 
                       containing AIS messages of type 5.
+        date_range: tuple of datetime objects specifying the
+                start and end date of the AIS messages to be loaded.
         max_tgt_ships: maximum number of target ships to retrun
 
         preproceccor: Preprocessor function for input data. 
@@ -216,6 +219,7 @@ class SearchAgent:
         self.data_loader = DataLoader(
             dynamic_paths,
             static_paths,
+            date_range,
             preprocessor,
             spatial_filter
         )
