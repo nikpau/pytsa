@@ -135,7 +135,7 @@ class NeighborhoodTreeSearch:
         `delta` minutes apart from imput `date`.
         """
         assert BaseColumns.TIMESTAMP.value in df, "No `timestamp` column found"
-        timezone = df[BaseColumns.TIMESTAMP.value].iloc[0].tz.zone # Get timezone
+        timezone = df[BaseColumns.TIMESTAMP.value].iloc[0].tz # Get timezone
         date = pd.to_datetime(int(date),unit="s").tz_localize(timezone)
         dt = pd.Timedelta(delta, unit="minutes")
         mask = (
@@ -470,6 +470,53 @@ class TargetShipConstructor:
 
         return {MMSI:tv}
     
+    def _impl_construct_multiple_target_vessels(self,
+                                                dyn: pd.DataFrame,
+                                                stat: pd.DataFrame) -> Targets:
+        """
+        Construct multiple TargetVessel objects from a given dataframe.
+        """
+        targets: Targets = {}
+        for mmsi in dyn[Msg12318Columns.MMSI.value].unique():
+            mmsi = int(mmsi)
+            ts = dyn[dyn[Msg12318Columns.MMSI.value] == mmsi]\
+                [BaseColumns.TIMESTAMP.value].iloc[0].to_pydatetime().timestamp()
+            tv =  TargetShip(
+                ts = None,
+                mmsi=mmsi,
+                ship_type=self._get_ship_type(stat,mmsi,ts),
+                length=self._get_ship_length(stat,mmsi),
+                tracks=[[]]
+            )
+            first = True
+            for ts,lat,lon,sog,cog in zip(
+                dyn[dyn[Msg12318Columns.MMSI.value] == mmsi][BaseColumns.TIMESTAMP.value], 
+                dyn[dyn[Msg12318Columns.MMSI.value] == mmsi][Msg12318Columns.LAT.value],  
+                dyn[dyn[Msg12318Columns.MMSI.value] == mmsi][Msg12318Columns.LON.value],       
+                dyn[dyn[Msg12318Columns.MMSI.value] == mmsi][Msg12318Columns.SPEED.value],
+                dyn[dyn[Msg12318Columns.MMSI.value] == mmsi][Msg12318Columns.COURSE.value]):
+                
+                ts: pd.Timestamp
+                
+                msg = AISMessage(
+                    sender=mmsi,
+                    timestamp=int(ts.timestamp()), # Convert to unix
+                    lat=lat,lon=lon,
+                    COG=cog,SOG=sog
+                )
+                if first:
+                    tv.tracks[-1].append(msg)
+                    first = False
+                else:
+                    # Check if message is a duplicate, i.e. had been 
+                    # received by multiple AIS stations
+                    if msg.timestamp == tv.tracks[-1][-1].timestamp:
+                        continue
+                    tv.tracks[-1].append(msg)
+                    
+            targets[mmsi] = tv
+        return targets
+    
     def _mp_construct_target_vessels(self,
                                      njobs: int = 4,
                                      skip_tsplit: bool = False) -> Targets:
@@ -487,7 +534,7 @@ class TargetShipConstructor:
                 self._n_obs_raw += len(dyn)
                 single_frames = self._distribute(dyn,njobs)
                 res = pool.starmap_async(
-                    self._impl_construct_target_vessel,
+                    self._impl_construct_multiple_target_vessels,
                     [(dframe,stat) for dframe in single_frames]
                 )
                 results.append(res)
