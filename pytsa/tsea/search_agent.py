@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from copy import copy
 from typing import Callable, Generator, List, Union
 from more_itertools import pairwise
 import multiprocessing as mp
@@ -217,8 +218,8 @@ class SearchAgent:
         )
 
         self.data_loader = DataLoader(
-            dynamic_paths,
-            static_paths,
+            copy(dynamic_paths),
+            copy(static_paths),
             date_range,
             preprocessor,
             spatial_filter
