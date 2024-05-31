@@ -540,9 +540,13 @@ class TargetShipConstructor:
                 results.append(res)
             for result in results:
                 singles.extend(result.get())
+        logger.info("Merging target ships...")
         targets = self._merge_targets(*singles)
+        
+        logger.info("Removing duplicates...")
         targets = self._remove_duplicates(targets)
         if not skip_tsplit:
+            logger.info("Splitting tracks...")
             targets = self._rejoin_tracks(
                 self._determine_split_points(targets)
             )
