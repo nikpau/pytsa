@@ -159,7 +159,7 @@ class SearchAgent:
                  frame: BoundingBox,
                  dynamic_paths: Union[Path,List[Path]],
                  static_paths: Union[Path,List[Path]],
-                 date_range: DateRange,
+                 date_range: DateRange = None,
                  max_tgt_ships: int = 200,
                  preprocessor: Callable[[pd.DataFrame],pd.DataFrame] = _identity,
                  decoded: bool = True,
