@@ -19,6 +19,9 @@ from .decoder import decode_from_file
 from .decoder.filedescriptor import (
     BaseColumns, Msg12318Columns, Msg5Columns
 )
+
+DateRange = tuple[datetime, datetime]
+
 try:
     import rhaversine
     haversine: Callable = rhaversine.haversine
@@ -137,12 +140,14 @@ class DataLoader:
     def __init__(self, 
                  dynamic_paths: list[Path],
                  static_paths: list[Path],
+                 date_range: DateRange,
                  pre_processor: Callable[[pd.DataFrame],pd.DataFrame],
                  spatial_filter: str) -> None:
         
         self.preprocessor = pre_processor
         self.dynamic_paths = dynamic_paths
         self.static_paths = static_paths
+        self.date_range = date_range
         
         # Text query to filter the data 
         # based on the spatial extent.
@@ -173,12 +178,16 @@ class DataLoader:
 
     @staticmethod
     def align_data_files(dyn: list[Path], 
-                         stat: list[Path]
+                         stat: list[Path],
+                         range: DateRange = None
                          ) -> tuple[list[Path], list[Path]]:
         """
         Align dynamic and static data files by sorting them
         according to their date, and removing all files that
         are not present in both lists.
+        
+        If the `range` parameter is provided, only files within
+        the specified date range will be considered.
 
         This function assumes that the dynamic and static data files
         are named according to the following convention:
@@ -211,6 +220,15 @@ class DataLoader:
         # Sort the files by date
         dyn = sorted(dyn, key=DataLoader._date_transformer)
         stat = sorted(stat, key=DataLoader._date_transformer)
+        
+        # Only consider files within the specified date range
+        if range:
+            dyn = [
+                f for f in dyn if range[0] <= DataLoader._date_transformer(f) <= range[1]
+            ]
+            stat = [
+                f for f in stat if range[0] <= DataLoader._date_transformer(f) <= range[1]
+            ]
 
         if not all([d.stem == s.stem for d,s in zip(dyn, stat)]):
             errout = ["\n".join([f'D: {d.stem} | S: {s.stem}' for d,s in zip(dyn, stat)])]
