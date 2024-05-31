@@ -213,9 +213,10 @@ class DataLoader:
         stat = sorted(stat, key=DataLoader._date_transformer)
 
         if not all([d.stem == s.stem for d,s in zip(dyn, stat)]):
+            errout = ["\n".join([f'D: {d.stem} | S: {s.stem}' for d,s in zip(dyn, stat)])]
             raise ValueError(
                 "Dynamic and static messages are not in the same order."
-                f"{["\n".join(f'D: {d.stem} | S: {s.stem}' for d,s in zip(dyn, stat))]}"
+                f"{errout}"
             )
 
         return dyn, stat
