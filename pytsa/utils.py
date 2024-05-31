@@ -212,8 +212,11 @@ class DataLoader:
         dyn = sorted(dyn, key=DataLoader._date_transformer)
         stat = sorted(stat, key=DataLoader._date_transformer)
 
-        assert all([d.stem == s.stem for d,s in zip(dyn, stat)]),\
-            "Dynamic and static messages are not in the same order."
+        if not all([d.stem == s.stem for d,s in zip(dyn, stat)]):
+            raise ValueError(
+                "Dynamic and static messages are not in the same order."
+                f"{["\n".join(f'D: {d.stem} | S: {s.stem}' for d,s in zip(dyn, stat))]}"
+            )
 
         return dyn, stat
 
