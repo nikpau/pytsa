@@ -160,7 +160,7 @@ class DataLoader:
         
         # Check for same size and same order
         self.sdyn, self.sstat = self.align_data_files(
-            dynamic_paths, static_paths
+            dynamic_paths, static_paths,self.date_range
         )
         
         # Flag to indicate if the data has
