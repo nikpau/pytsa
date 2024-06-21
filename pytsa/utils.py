@@ -298,7 +298,7 @@ class DataLoader:
             stat[[DataLoader.static_columns]]
         )
         
-    def load(self) -> None:
+    def iterate_files(self) -> None:
         """
         Loads all data into memory.
         """

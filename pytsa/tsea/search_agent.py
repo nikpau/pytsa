@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from copy import copy
-from typing import Callable, Generator, List, Union
+from typing import Callable, Generator, List, Sequence, Union
 from more_itertools import pairwise
 import multiprocessing as mp
 import numpy as np
@@ -26,6 +26,7 @@ from ..utils import DataLoader, DateRange
 def _identity(x):
     return x
 
+from os import getpid
 
 class NeighborhoodTreeSearch:
     """
@@ -143,6 +144,12 @@ class NeighborhoodTreeSearch:
             (df[BaseColumns.TIMESTAMP.value] < (date+dt))
         )
         return df.loc[mask]
+
+SaInputPaths = Union[
+    Path,Sequence[Path],
+    Generator[Path,None,None],str,
+    Generator[str,None,None],List[str]
+]
 class SearchAgent:
     """
     Class searching for target ships
@@ -157,8 +164,8 @@ class SearchAgent:
     
     def __init__(self, 
                  frame: BoundingBox,
-                 dynamic_paths: Union[Path,List[Path]],
-                 static_paths: Union[Path,List[Path]],
+                 dynamic_paths: SaInputPaths,
+                 static_paths: SaInputPaths,
                  date_range: DateRange = None,
                  max_tgt_ships: int = 200,
                  preprocessor: Callable[[pd.DataFrame],pd.DataFrame] = _identity,
@@ -190,23 +197,8 @@ class SearchAgent:
                 If `high_accuracy` is False, the Haversine formula
                 is used. Defaults to False.
         """
-        # Exhaust generators 
-        # This is possible if Path().glob() is used
-        if isinstance(dynamic_paths, Generator):
-            self.dynamic_paths = list(dynamic_paths)
-        elif not isinstance(dynamic_paths,list):
-            self.dynamic_paths = [dynamic_paths]
-            self.dynamic_paths = [Path(p) for p in dynamic_paths]
-        else:
-            self.dynamic_paths = [Path(p) for p in dynamic_paths]
-        
-        if isinstance(static_paths, Generator):
-            self.static_paths = list(static_paths)
-        elif not isinstance(static_paths,list):
-            self.static_paths = [static_paths]
-            self.static_paths = [Path(p) for p in static_paths]
-        else:
-            self.static_paths = [Path(p) for p in static_paths]
+        self.static_paths = self._sanitize_input_paths(static_paths)
+        self.dynamic_paths = self._sanitize_input_paths(dynamic_paths)
 
         self.high_accuracy = high_accuracy
         
@@ -260,6 +252,23 @@ class SearchAgent:
         # Number of times, the _position_correction function
         # was called
         self._n_position_correction = 0
+        
+    def _sanitize_input_paths(self, input_paths: SaInputPaths) -> List[Path]:
+        """
+        Convert input paths to Path objects.
+        """
+        match input_paths:
+            case str() | Path():
+                # Single string or Path
+                return [Path(input_paths)]
+            case list() as lst:
+                # List of strings or Paths
+                return [Path(item) if isinstance(item, str) else item for item in lst]
+            case Generator():
+                # Generator of strings or Paths
+                return [Path(item) if isinstance(item, str) else item for item in input_paths]
+            case _:
+                raise ValueError("Unsupported input type")
         
     def freeze(self, 
                tpos: TimePosition, 
@@ -397,14 +406,14 @@ class TargetShipConstructor:
         """
         Distribute a given dataframe into `nparts`
         equally sized smaller data frames.
-        
+
         Parameters:
         -----------------
         df (pd.DataFrame): Pandas DataFrame containing the
             data to be split
         nparts (int): number of parts into which `df` is
             going to be split.
-    
+
         Returns:
         -----------------
         List of DataFrames: A list of DataFrames, 
@@ -417,11 +426,25 @@ class TargetShipConstructor:
                 "Number of parts must be a positive"
                 "integer and DataFrame must not be None."
             )
-
-        # Use numpy.array_split to split the 
-        # DataFrame into nearly equal parts
-        return list(np.array_split(df, nparts))
         
+        # Calculate the size of each part
+        part_size = len(df) // nparts
+        remainder = len(df) % nparts
+        
+        parts = []
+        start_idx = 0
+        
+        for i in range(nparts):
+            # Calculate the end index of the current part
+            end_idx = start_idx + part_size + (1 if i < remainder else 0)
+            
+            # Append the current part to the list
+            parts.append(df.iloc[start_idx:end_idx])
+            
+            # Update the start index for the next part
+            start_idx = end_idx
+            
+        return parts
     
     def _impl_construct_target_vessel(self, 
                                       dyn: pd.DataFrame,
@@ -477,46 +500,36 @@ class TargetShipConstructor:
         Construct multiple TargetVessel objects from a given dataframe.
         """
         targets: Targets = {}
-        for mmsi in dyn[Msg12318Columns.MMSI.value].unique():
+        dyn_grouped = dyn.groupby(Msg12318Columns.MMSI.value)
+        for mmsi, group in dyn_grouped:
             mmsi = int(mmsi)
-            ts = dyn[dyn[Msg12318Columns.MMSI.value] == mmsi]\
-                [BaseColumns.TIMESTAMP.value].iloc[0].to_pydatetime().timestamp()
-            tv =  TargetShip(
-                ts = None,
+            ts = group[BaseColumns.TIMESTAMP.value].iloc[0].to_pydatetime().timestamp()
+            tv = TargetShip(
+                ts=None,
                 mmsi=mmsi,
-                ship_type=self._get_ship_type(stat,mmsi,ts),
-                length=self._get_ship_length(stat,mmsi),
+                ship_type=self._get_ship_type(stat, mmsi, ts),
+                length=self._get_ship_length(stat, mmsi),
                 tracks=[[]]
             )
             first = True
-            for ts,lat,lon,sog,cog in zip(
-                dyn[dyn[Msg12318Columns.MMSI.value] == mmsi][BaseColumns.TIMESTAMP.value], 
-                dyn[dyn[Msg12318Columns.MMSI.value] == mmsi][Msg12318Columns.LAT.value],  
-                dyn[dyn[Msg12318Columns.MMSI.value] == mmsi][Msg12318Columns.LON.value],       
-                dyn[dyn[Msg12318Columns.MMSI.value] == mmsi][Msg12318Columns.SPEED.value],
-                dyn[dyn[Msg12318Columns.MMSI.value] == mmsi][Msg12318Columns.COURSE.value]):
-                
-                ts: pd.Timestamp
-                
+            for row in group.itertuples():
                 msg = AISMessage(
                     sender=mmsi,
-                    timestamp=int(ts.timestamp()), # Convert to unix
-                    lat=lat,lon=lon,
-                    COG=cog,SOG=sog
+                    timestamp=int(row.timestamp.timestamp()),  # Convert to unix
+                    lat=row.lat, lon=row.lon,
+                    COG=row.course, SOG=row.speed
                 )
                 if first:
                     tv.tracks[-1].append(msg)
                     first = False
                 else:
-                    # Check if message is a duplicate, i.e. had been 
-                    # received by multiple AIS stations
                     if msg.timestamp == tv.tracks[-1][-1].timestamp:
                         continue
                     tv.tracks[-1].append(msg)
-                    
+
             targets[mmsi] = tv
-        return targets
-    
+        return targets    
+
     def _mp_construct_target_vessels(self,
                                      njobs: int = 4,
                                      skip_tsplit: bool = False) -> Targets:
@@ -528,18 +541,15 @@ class TargetShipConstructor:
         """
         self.reset_stats()
         singles: list[Targets] = []
-        with mp.Pool(njobs) as pool:
-            results = []
+        with mp.get_context("forkserver").Pool(njobs) as pool:
             for dyn, stat in self.data_loader.iterate_chunks():
                 self._n_obs_raw += len(dyn)
                 single_frames = self._distribute(dyn,njobs)
-                res = pool.starmap_async(
+                res = pool.starmap(
                     self._impl_construct_multiple_target_vessels,
                     [(dframe,stat) for dframe in single_frames]
                 )
-                results.append(res)
-            for result in results:
-                singles.extend(result.get())
+                singles.extend(res)
         logger.info("Merging target ships...")
         targets = self._merge_targets(*singles)
         
