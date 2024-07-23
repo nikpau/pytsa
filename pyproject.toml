@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "pytsa"
-version = "2.3.5"
+version = "2.3.6"
 requires-python = ">=3.9"
 description = "Toolbox for extracting trajectories and monitoring vessels from raw AIS records."
 authors = [
