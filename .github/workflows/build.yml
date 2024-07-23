@@ -28,7 +28,7 @@ jobs:
           uses: actions/upload-artifact@v3
           with:
             name: wheels
-            path: target/wheels/
+            path: dist/
 
     publish-to-pypi:
       name: >-
@@ -48,7 +48,7 @@ jobs:
           uses: actions/download-artifact@v3
           with:
             name: wheels
-            path: target/wheels/
+            path: dist/
         - name: Publish distribution to PyPI
           uses: pypa/gh-action-pypi-publish@release/v1
           
@@ -69,12 +69,12 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: wheels
-          path: target/wheels/
+          path: dist/
       - name: Sign the dists with Sigstore
         uses: sigstore/gh-action-sigstore-python@v2.1.1
         with:
           inputs: >-
-            ./target/wheels/*.whl
+            ./dist/*.whl
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -87,9 +87,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         # Upload to GitHub Release using the `gh` CLI.
-        # `target/wheels/` contains the built packages, and the
+        # `dist/` contains the built packages, and the
         # sigstore-produced signatures and certificates.
         run: >-
           gh release upload
-          '${{ github.ref_name }}' target/wheels/**
+          '${{ github.ref_name }}' dist/**
           --repo '${{ github.repository }}'
