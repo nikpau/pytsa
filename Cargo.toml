@@ -10,4 +10,4 @@ pyo3 = { version = "0.21.2", features = ["extension-module"] }
 crate-type = ["cdylib"]
 
 [package.metadata.maturin]
-name = "pytsa"
+name = "pytsa-ais"

@@ -3,7 +3,7 @@ requires = ["maturin>=0.12", "setuptools"]
 build-backend = "maturin"
 
 [project]
-name = "pytsa"
+name = "pytsa-ais"
 version = "2.3.6"
 requires-python = ">=3.9"
 description = "Toolbox for extracting trajectories and monitoring vessels from raw AIS records."
