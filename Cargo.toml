@@ -1,5 +1,5 @@
 [package]
-name = "rust-haversine"
+name = "_pytsa_compiled"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,4 +7,7 @@ edition = "2021"
 pyo3 = { version = "0.21.2", features = ["extension-module"] }
 
 [lib]
-crate-type = ["cdylib"]  # This tells Rust to compile the library as a dynamic library
+crate-type = ["cdylib"]
+
+[package.metadata.maturin]
+name = "pytsa"

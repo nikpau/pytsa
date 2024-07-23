@@ -23,12 +23,12 @@ from .decoder.filedescriptor import (
 DateRange = tuple[datetime, datetime]
 
 try:
-    import rhaversine
-    haversine: Callable = rhaversine.haversine
+    import pytsa._pytsa_compiled as compiled
+    haversine = compiled.haversine
 except ImportError as IE:
     logger.warning(
-        "Shared library 'rhaversine.so' could not be loaded. "
-        "Using numpy implementation.\n{}".format(IE)
+        "Rust extension for the ``haversine`` could not be loaded. "
+        "Using numpy implementation. Original Error:\n{}".format(IE)
     )
     def haversine(lon1, lat1, lon2, lat2, miles = True):
         """
