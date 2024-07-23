@@ -28,7 +28,7 @@ jobs:
           uses: actions/upload-artifact@v3
           with:
             name: wheels
-            path: dist/
+            path: target/wheels/
 
     publish-to-pypi:
       name: >-
@@ -41,16 +41,18 @@ jobs:
         name: pypi
         url: https://pypi.org/p/pytsa-ais
       permissions:
-        id-token: write
+        id-token: write  # IMPORTANT: mandatory for trusted publishing
 
       steps:
         - name: Download all the dists
           uses: actions/download-artifact@v3
           with:
             name: wheels
-            path: dist/
+            path: target/wheels/
         - name: Publish distribution to PyPI
           uses: pypa/gh-action-pypi-publish@release/v1
+          with:
+            packages-dir: target/wheels/
           
     github-release:
       name: >-
@@ -61,20 +63,20 @@ jobs:
       runs-on: ubuntu-latest
 
       permissions:
-        contents: write  # IMPORTANT: mandatory for making GitHub Releases
-        id-token: write  # IMPORTANT: mandatory for sigstore
+        contents: write
+        id-token: write
 
       steps:
       - name: Download all the dists
         uses: actions/download-artifact@v3
         with:
           name: wheels
-          path: dist/
+          path: target/wheels/
       - name: Sign the dists with Sigstore
         uses: sigstore/gh-action-sigstore-python@v2.1.1
         with:
           inputs: >-
-            ./dist/*.whl
+            ./target/wheels/*.whl
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -87,9 +89,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         # Upload to GitHub Release using the `gh` CLI.
-        # `dist/` contains the built packages, and the
+        # `target/wheels/` contains the built packages, and the
         # sigstore-produced signatures and certificates.
         run: >-
           gh release upload
-          '${{ github.ref_name }}' dist/**
+          '${{ github.ref_name }}' target/wheels/**
           --repo '${{ github.repository }}'
