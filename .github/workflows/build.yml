@@ -23,7 +23,7 @@ jobs:
           if: runner.os == 'Windows'
           run: |
             choco install openssl
-            RefreshEnv
+            powershell -Command "Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1; refreshenv"
         - name: Install Rust
           uses: actions-rs/toolchain@v1
           with:
