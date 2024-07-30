@@ -56,7 +56,7 @@ jobs:
   
         - name: Set up dependencies on manylinux
           run: |
-            yum install -y openssl python3-pip
+            sudo yum install -y openssl python3-pip
   
         - name: Install Rust
           uses: actions-rs/toolchain@v1
@@ -78,7 +78,7 @@ jobs:
   
       container:
         image: ${{ matrix.manylinux == 'manylinux' && 'quay.io/pypa/manylinux_2_28_x86_64'}}
-        options: --user 1001  # ensure the container runs as a non-root user
+        options: --user 0:0  # ensure the container runs as a root user
       
 
     publish-to-pypi:
