@@ -4,8 +4,8 @@ build-backend = "maturin"
 
 [project]
 name = "pytsa-ais"
-version = "2.3.6"
-requires-python = ">=3.9"
+version = "2.3.6a"
+requires-python = ">=3.10"
 description = "Toolbox for extracting trajectories and monitoring vessels from raw AIS records."
 authors = [
   {email = "niklas.paulig@tu-dresden.de"},

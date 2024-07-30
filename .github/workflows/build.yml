@@ -7,8 +7,8 @@ jobs:
       runs-on: ${{ matrix.os }}
       strategy:
         matrix:
-          python-version: ["3.9", "3.10","3.11", "3.12"]
-          os: [ubuntu-latest, macos-latest, windows-latest]
+          python-version: ["3.10","3.11", "3.12"]
+          os: [ubuntu-latest, macos-latest, windows-latest, manylinux]
       steps:
         - uses: actions/checkout@v4
         - name: Set up Python ${{ matrix.python-version }}
@@ -24,6 +24,10 @@ jobs:
           run: |
             choco install openssl
             powershell -Command "Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1; refreshenv"
+        - name: Set up dependencies on manylinux
+          if: matrix.os == 'manylinux'
+          run: |
+            yum install -y openssl python3-pip
         - name: Install Rust
           uses: actions-rs/toolchain@v1
           with:
@@ -38,6 +42,9 @@ jobs:
           with:
             name: wheels
             path: target/wheels/
+      container:
+        image: ${{ matrix.os == 'manylinux' && 'quay.io/pypa/manylinux_2_28_x86_64' || 'ubuntu:latest' }}
+        options: --user 1001  # ensure the container runs as a non-root user
 
     publish-to-pypi:
       name: >-
