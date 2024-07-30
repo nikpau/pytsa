@@ -24,10 +24,6 @@ jobs:
           run: |
             choco install openssl
             powershell -Command "Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1; refreshenv"
-        - name: Set up dependencies on manylinux
-          if: matrix.os == 'manylinux'
-          run: |
-            yum install -y openssl python3-pip
         - name: Install Rust
           uses: actions-rs/toolchain@v1
           with:
@@ -42,9 +38,48 @@ jobs:
           with:
             name: wheels
             path: target/wheels/
+
+    manylinux-build:
+      runs-on: ubuntu-latest
+      strategy:
+        matrix:
+          python-version: ["3.10", "3.11", "3.12"]
+          manylinux: [manylinux]
+  
+      steps:
+        - uses: actions/checkout@v4
+  
+        - name: Set up Python ${{ matrix.python-version }}
+          uses: actions/setup-python@v5
+          with:
+            python-version: ${{ matrix.python-version }}
+  
+        - name: Set up dependencies on manylinux
+          run: |
+            yum install -y openssl python3-pip
+  
+        - name: Install Rust
+          uses: actions-rs/toolchain@v1
+          with:
+            toolchain: stable
+            profile: minimal
+  
+        - name: Install Maturin
+          run: pip install maturin
+  
+        - name: Build with Maturin
+          run: maturin build
+  
+        - name: Upload Wheels
+          uses: actions/upload-artifact@v3
+          with:
+            name: wheels
+            path: target/wheels/
+  
       container:
-        image: ${{ matrix.os == 'manylinux' && 'quay.io/pypa/manylinux_2_28_x86_64' || 'ubuntu:latest' }}
+        image: ${{ matrix.manylinux == 'manylinux' && 'quay.io/pypa/manylinux_2_28_x86_64'}}
         options: --user 1001  # ensure the container runs as a non-root user
+      
 
     publish-to-pypi:
       name: >-
@@ -52,6 +87,7 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/')  # only publish to PyPI on tag pushes
       needs:
       - build
+      - manylinux-build
       runs-on: ubuntu-latest
       environment:
         name: pypi
