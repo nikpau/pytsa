@@ -56,7 +56,7 @@ jobs:
   
         - name: Set up dependencies on manylinux
           run: |
-            sudo yum install -y openssl python3-pip
+            yum install -y openssl python3-pip
   
         - name: Install Rust
           uses: actions-rs/toolchain@v1
