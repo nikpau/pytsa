@@ -1,27 +1,30 @@
 from __future__ import annotations
 
-from pathlib import Path
-from copy import copy
-from typing import Callable, Generator, List, Sequence, Union
-from more_itertools import pairwise
-import multiprocessing as mp
+import os
 import numpy as np
 import pandas as pd
+import multiprocessing as mp
+
+from copy import copy
+from pathlib import Path
 from scipy.spatial import cKDTree
+from more_itertools import pairwise
+from typing import Callable, Generator, List, Sequence, Union
+
+from . import split
 from ..logger import logger
 from ..structs import (
     BoundingBox, TimePosition,
     UNIX_TIMESTAMP, ShipType
-)
-from . import split
-from ..decoder.filedescriptor import (
-    BaseColumns, Msg12318Columns, Msg5Columns
 )
 from .targetship import (
     TargetShip, AISMessage, 
     InterpolationError, Track, Targets
 )
 from ..utils import DataLoader, DateRange
+from ..decoder.filedescriptor import (
+    BaseColumns, Msg12318Columns, Msg5Columns
+)
 
 def _identity(x):
     return x
@@ -136,12 +139,11 @@ class NeighborhoodTreeSearch:
         `delta` minutes apart from imput `date`.
         """
         assert BaseColumns.TIMESTAMP.value in df, "No `timestamp` column found"
-        timezone = df[BaseColumns.TIMESTAMP.value].iloc[0].tz # Get timezone
-        date = pd.to_datetime(int(date),unit="s").tz_localize(timezone)
+        date = pd.to_datetime(int(date),unit="s",origin="unix")
         dt = pd.Timedelta(delta, unit="minutes")
         mask = (
-            (df[BaseColumns.TIMESTAMP.value] > (date-dt)) & 
-            (df[BaseColumns.TIMESTAMP.value] < (date+dt))
+            (df[BaseColumns.TIMESTAMP.value] > (date-dt).timestamp()) & 
+            (df[BaseColumns.TIMESTAMP.value] < (date+dt).timestamp())
         )
         return df.loc[mask]
 
@@ -402,49 +404,23 @@ class TargetShipConstructor:
         self._n_obs_raw = 0
         self._n_trajectories = 0
 
-    def _distribute(self, df: pd.DataFrame, nparts: int) -> list[pd.DataFrame]:
+    def _distribute(self, df: pd.DataFrame ) -> list[pd.DataFrame]:
         """
         Distribute a given dataframe into `nparts`
         equally sized smaller data frames.
 
         Parameters:
         -----------------
-        df (pd.DataFrame): Pandas DataFrame containing the
-            data to be split
-        nparts (int): number of parts into which `df` is
-            going to be split.
+        dyn (pd.DataFrame): Pandas DataFrame containing the
+            dynamic AIS messages.
 
         Returns:
         -----------------
         List of DataFrames: A list of DataFrames, 
         each being a part of the original DataFrame.
         """
-        # Check if the DataFrame can be split 
-        # into the desired number of parts
-        if nparts <= 0 or df is None:
-            raise ValueError(
-                "Number of parts must be a positive"
-                "integer and DataFrame must not be None."
-            )
-        
-        # Calculate the size of each part
-        part_size = len(df) // nparts
-        remainder = len(df) % nparts
-        
-        parts = []
-        start_idx = 0
-        
-        for i in range(nparts):
-            # Calculate the end index of the current part
-            end_idx = start_idx + part_size + (1 if i < remainder else 0)
-            
-            # Append the current part to the list
-            parts.append(df.iloc[start_idx:end_idx])
-            
-            # Update the start index for the next part
-            start_idx = end_idx
-            
-        return parts
+        grouped = df.groupby(Msg12318Columns.MMSI.value)
+        return [group for _, group in grouped]
     
     def _impl_construct_target_vessel(self, 
                                       dyn: pd.DataFrame,
@@ -494,16 +470,50 @@ class TargetShipConstructor:
         return {MMSI:tv}
     
     def _impl_construct_multiple_target_vessels(self,
-                                                dyn: pd.DataFrame,
-                                                stat: pd.DataFrame) -> Targets:
+                                                dyn: mp.Array,
+                                                stat: mp.Array,
+                                                dyn_shape: tuple[int,int],
+                                                stat_shape: tuple[int,int],
+                                                dyn_chunk_size: int,
+                                                stat_chunk_size: int,
+                                                dyn_cols: list[str],
+                                                stat_cols: list[str],
+                                                index: int,
+                                                resqueue: mp.Queue) -> Targets:
         """
         Construct multiple TargetVessel objects from a given dataframe.
         """
+        dyn_start_index = index * dyn_chunk_size
+        dyn_end_index = dyn_start_index + dyn_chunk_size
+        shared_dyn = pd.DataFrame(np.frombuffer(dyn.get_obj()).reshape(dyn_shape))  
+        
+        stat_start_index = index * stat_chunk_size
+        stat_end_index = stat_start_index + stat_chunk_size
+        shared_stat = pd.DataFrame(np.frombuffer(stat.get_obj()).reshape(stat_shape))
+        
+        dyn: pd.DataFrame = shared_dyn[dyn_start_index:dyn_end_index].copy()
+        stat: pd.DataFrame = shared_stat[stat_start_index:stat_end_index].copy()
+        
+        # Re-add headers
+        dyn.columns = dyn_cols
+        stat.columns = stat_cols
+        
+        # Make MMSI an integer
+        dyn[Msg12318Columns.MMSI.value] = dyn[Msg12318Columns.MMSI.value].astype(int)
+        stat[Msg5Columns.MMSI.value] = stat[Msg5Columns.MMSI.value].astype(int)
+        
         targets: Targets = {}
+        dyn = dyn.sort_values(by=BaseColumns.TIMESTAMP.value)
+        stat = stat.sort_values(by=BaseColumns.TIMESTAMP.value)
         dyn_grouped = dyn.groupby(Msg12318Columns.MMSI.value)
+        logger.info(
+            f"Process no. {os.getpid()} is constructing target ships"
+            "...this may take a while."
+        )
         for mmsi, group in dyn_grouped:
+            logger.debug(f"Processing MMSI {mmsi}")
             mmsi = int(mmsi)
-            ts = group[BaseColumns.TIMESTAMP.value].iloc[0].to_pydatetime().timestamp()
+            ts = group[BaseColumns.TIMESTAMP.value].iloc[0]
             tv = TargetShip(
                 ts=None,
                 mmsi=mmsi,
@@ -515,7 +525,7 @@ class TargetShipConstructor:
             for row in group.itertuples():
                 msg = AISMessage(
                     sender=mmsi,
-                    timestamp=int(row.timestamp.timestamp()),  # Convert to unix
+                    timestamp=int(row.timestamp),
                     lat=row.lat, lon=row.lon,
                     COG=row.course, SOG=row.speed
                 )
@@ -528,7 +538,7 @@ class TargetShipConstructor:
                     tv.tracks[-1].append(msg)
 
             targets[mmsi] = tv
-        return targets    
+        return resqueue.put(targets)
 
     def _mp_construct_target_vessels(self,
                                      njobs: int = 4,
@@ -541,15 +551,39 @@ class TargetShipConstructor:
         """
         self.reset_stats()
         singles: list[Targets] = []
-        with mp.get_context("forkserver").Pool(njobs) as pool:
-            for dyn, stat in self.data_loader.iterate_chunks():
-                self._n_obs_raw += len(dyn)
-                single_frames = self._distribute(dyn,njobs)
-                res = pool.starmap(
-                    self._impl_construct_multiple_target_vessels,
-                    [(dframe,stat) for dframe in single_frames]
+        for dynfile, statfile in self.data_loader.get_file():
+            dynshared, dynshape, dynchunk = self.data_loader.prepare_shared_array(
+                file = dynfile,
+                column_names = self.data_loader.dynamic_columns,
+                njobs=njobs,
+                info="dynamic")
+            
+            statshared, statshape, statchunk = self.data_loader.prepare_shared_array(
+                file = statfile,
+                column_names = self.data_loader.static_columns,
+                njobs=njobs,
+                info="static")
+            
+            resqueue = mp.Queue()
+            processes = []
+            for index in range(njobs):
+                p = mp.Process(
+                    target=self._impl_construct_multiple_target_vessels,
+                    args=(
+                        dynshared, statshared,
+                        dynshape, statshape,
+                        dynchunk, statchunk,
+                        self.data_loader.dynamic_columns, 
+                        self.data_loader.static_columns,
+                        index, resqueue
+                    )
                 )
-                singles.extend(res)
+                processes.append(p)
+                p.start()
+                
+            for _ in range(njobs):
+                singles.append(resqueue.get())
+
         logger.info("Merging target ships...")
         targets = self._merge_targets(*singles)
         
@@ -855,15 +889,17 @@ class TargetShipConstructor:
         header = f"{'Metric':<30}{'Value':>20}"
 
         # Printing the title and header
-        print(f"{separator}\n{title.center(len(separator))}\n{separator}")
-        print(header)
-        print(separator)
+        logger.info(f"{separator}")
+        logger.info(f"{title.center(len(separator))}")
+        logger.info(f"{separator}")
+        logger.info(header)
+        logger.info(separator)
 
         # Iterating over the metrics to print each one
         for metric, value in metrics.items():
-            print(f"{metric:<30}{value:>20}")
+            logger.info(f"{metric:<30}{value:>20}")
 
-        print(separator)
+        logger.info(separator)
         
     def reset_stats(self) -> None:
         """

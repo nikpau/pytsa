@@ -4,6 +4,7 @@ Utility functions for pytsa
 from __future__ import annotations
 
 from datetime import datetime
+from io import TextIOWrapper
 from itertools import cycle
 import numpy as np
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Callable, Generator
 import pandas as pd
 import psutil
 import vincenty as _vincenty
+import multiprocessing as mp
 import ciso8601
 from .logger import logger
 from .decoder import decode_from_file
@@ -114,8 +116,8 @@ class DataLoader:
     provides utilities to decode and load the data.
     """
     
-    # Fraction of the file to load
-    chunkfrac = 1/3
+    # Fraction of the file to read
+    nfrac = 10
 
     #Engine to use for decoding
     ENGINE = "pyarrow"
@@ -238,16 +240,6 @@ class DataLoader:
             )
 
         return dyn, stat
-
-    def _date_preprocessor(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Preprocess the date column of `df` to turn it into 
-        pandas datetime objects.
-        """
-        df[BaseColumns.TIMESTAMP.value] = pd.to_datetime(
-            df[BaseColumns.TIMESTAMP.value]
-        )
-        return df
     
     def _dynamic_preprocessor(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -255,8 +247,6 @@ class DataLoader:
         """
         # Apply user-defined preprocessor and spatial filter
         df = self.preprocessor(df).query(self.spatial_filter).copy()
-        # Convert timestamp to datetime
-        df = self._date_preprocessor(df)
         # Drop duplicates form multiple base stations
         df = df.drop_duplicates(
                 subset=[
@@ -266,13 +256,192 @@ class DataLoader:
             )
         return df
     
-    def _static_preprocessor(self, df: pd.DataFrame) -> pd.DataFrame:
+    def get_file(self) -> Generator[tuple[Path,Path], None, None]:
         """
-        Preprocess the static messages.
+        Return the next pair of dynamic and static
+        messages.
         """
-        # Convert timestamp to datetime
-        df = self._date_preprocessor(df)
-        return df
+        yield from zip(self.sdyn, self.sstat)
+
+    def calculate_nrows(self, filehandle: TextIOWrapper) -> int:
+        """
+        Calculate the number of rows in a CSV file.
+        One is added to the result to account for the header.
+        """
+        return sum(1 for _ in filehandle) + 1
+    
+    def get_header(self, filehandle: TextIOWrapper) -> str:
+        """
+        Return the header of a CSV file.
+        """
+        return next(filehandle)
+    
+    def _get_column_idices(self, header: str, columns: list[str]) -> list[int]:
+        """
+        Get the indices of the columns in the header and
+        the index of the timestamp column.
+        """
+        col_idxs = [header.split(",").index(c) for c in columns]
+        timestamp_col = columns.index(BaseColumns.TIMESTAMP.value)
+        return col_idxs, timestamp_col
+    
+    def _read_chunk(self,
+                    fp: Path, 
+                    start_row: int, 
+                    rows_to_load: int, 
+                    queue: mp.Queue,
+                    col_idxs: list[int],
+                    timestamp_col: int,
+                    column_names: list[str],
+                    preprocessor: Callable) -> None:
+        """
+        Reads a chunk of rows from a CSV file, processes the timestamp column, 
+        reorders the columns and inserts the processed DataFrame into a 
+        multiprocessing queue.
+
+        Parameters:
+        -----------
+        fp : Path
+            The file path to the CSV file.
+        start_row : int
+            The starting row number from which to begin reading the CSV file.
+        rows_to_load : int
+            The number of rows to read from the CSV file starting from `start_row`.
+        queue : mp.Queue
+            A multiprocessing queue to put the processed DataFrame into.
+        col_idxs : list[int]
+            The indices of the columns to be read from the CSV file.
+        timestamp_col : int
+            The index of the timestamp column in the subset of columns being read.
+        column_names : list[str]
+            The original order of column names in the CSV file.
+        preprocessor : Callable
+            A function to preprocess the data before it is put into the queue.
+
+        Returns:
+        --------
+        None
+            The processed DataFrame is put into the queue.
+        """
+        df = pd.read_csv(
+            fp, skiprows=start_row, nrows=rows_to_load,usecols=col_idxs, sep = ",")
+        # Convert timestamp col to unix timestamp
+        dates = pd.to_datetime(df.iloc[:,timestamp_col])
+        # Get timezones
+        if dates.dt.tz is None:
+            dates = dates.dt.tz_localize('UTC')
+        df.iloc[:,timestamp_col] = (dates - pd.Timestamp("1970-01-01",tzinfo=dates.dt.tz)) // pd.Timedelta("1s")
+        # Since we only use a subset of the columns, `df` orders
+        # its columns according to the order of `col_idxs`. We need
+        # to reorder the columns to match the original order of `column_names`.
+        ncolnames = [column_names[i] for i in np.argsort(col_idxs)]
+        df.columns = ncolnames
+        df = df[column_names]
+        if preprocessor:
+            df = preprocessor(df)
+        queue.put(df)
+        return None
+    
+    def prepare_shared_array(self,                               
+                            file: Path,
+                            column_names: list[str],
+                            njobs: int,
+                            info: str) -> tuple[mp.Array, tuple[int,int], int]:
+        """
+        Prepares a shared memory array for the given CSV file, 
+        dividing the work among multiple processes.
+
+
+        Parameters:
+        -----------
+        file : Path
+            The file path to the CSV file.
+        column_names : list[str]
+            The list of column names to be used.
+        njobs : int
+            The number of processes to use for reading the file.
+        info : str
+            The type of information in the messages file. Should be 
+            either "dynamic" or "static".
+
+        Returns:
+        --------
+        shared : mp.Array
+            The shared memory array containing the data.
+        shape : tuple
+            The shape of the data (nrows, ncolumns).
+        rows_to_read : int
+            The number of rows each process reads.
+
+        Raises:
+        -------
+        AssertionError
+            If `info` is not "dynamic" or "static".
+
+        Notes:
+        ------
+        - The number of rows in the CSV file and the indices of the 
+            specified columns are calculated.
+        - A shared memory array is created to store the data, and 
+            multiple processes are started to read chunks of the file.
+        - If `info` is "dynamic", a dynamic preprocessor is applied 
+            to the data.
+        - The data is collected from the queue and stored in the 
+            shared memory array.
+        """
+        assert info in ["dynamic", "static"], "Invalid info: {}".format(info)
+        logger.info(f"Processing {info} messages file: {file.stem}")
+        logger.debug(f"Calculating number of rows.")
+        
+        with open(file) as f:
+            header = self.get_header(f)
+            nrows = self.calculate_nrows(f)
+            
+        col_idxs, timestamp_col = self._get_column_idices(
+            header, column_names
+        )
+        
+        rows_to_read = int(nrows / njobs) + 1
+        
+        # Shared memory array
+        ncolumns = len(column_names)
+        shared = mp.Array("d", nrows*ncolumns)
+        
+        queue = mp.Queue()
+        
+        # Apply any pre-processing to the data
+        preprocessor = self._dynamic_preprocessor if info == "dynamic" else None
+        
+        processes = []
+        for i in range(njobs):
+            start_row = i * rows_to_read + 1 # Skip the header
+            pdyn = mp.Process(
+                target=self._read_chunk,
+                args=(
+                    file, start_row, rows_to_read, 
+                    queue, col_idxs, timestamp_col, 
+                    column_names, preprocessor
+                )
+            )
+            processes.append(pdyn)
+
+        logger.info("Reading file in parallel...") 
+        for p in processes:
+            p.start()
+            
+        # Collect the data into shared memory
+        start_index = 0
+        for entry in range(njobs):
+            logger.info(f"Collecting chunk {entry+1}/{njobs}")
+            df_chunk: pd.DataFrame = queue.get()
+            end_index = start_index + df_chunk.size
+            np_array_chunk = df_chunk.to_numpy()
+            shared[start_index:end_index] = np_array_chunk.flatten()
+            start_index = end_index 
+            logger.debug(f"End index at {end_index/(nrows*ncolumns)*100:.1f}%.")
+
+        logger.info("File contents placed in shared memory.")
+        return shared, (nrows, ncolumns), rows_to_read
     
     def from_raw(self, raw_dyn: Path, raw_stat: Path) -> tuple[pd.DataFrame,pd.DataFrame]:
         """
@@ -315,59 +484,6 @@ class DataLoader:
         logger.info("Done.")
         
         self.loaded = True
-    
-    def iterate_chunks(self,
-                   decode: bool = False
-                ) -> Generator[
-                      tuple[pd.DataFrame,pd.DataFrame], 
-                      None, 
-                      None
-                    ]:
-        """
-        Yield chunks of the dynamic and static
-        messages.
-        
-        If decode is True, the raw AIS messages
-        will be decoded and the decoded messages
-        will be returned as a DataFrame.
-        
-        """
-        dyn_options = dict(
-            sep=",",
-            usecols=self.dynamic_columns
-        )
-        stat_options = dict(
-            sep=",",
-            usecols=self.static_columns
-        )
-        for dyn_path, stat_path in zip(self.sdyn,self.sstat):
-            
-            # Count rows of both files
-            with open(dyn_path) as f, open(stat_path) as g:
-                dyn_rows = sum(1 for _ in f)
-                stat_rows = sum(1 for _ in g)
-             
-            chunksize_stat = int(stat_rows * DataLoader.chunkfrac) + 1
-            chunksize_dyn = int(dyn_rows * DataLoader.chunkfrac) + 1
-            dyn_options["chunksize"] = chunksize_dyn
-            stat_options["chunksize"] = chunksize_stat
-            
-            if decode:
-                # Decode dynamic data
-                yield self.from_raw(dyn_path, stat_path)
-            else:
-                # Create a generator of pandas DataFrames
-                dyniter = pd.read_csv(dyn_path,**dyn_options)
-                statiter = pd.read_csv(stat_path,**stat_options)
-                
-                for i, (dc,sc) in enumerate(zip(dyniter,statiter)):
-                    logger.info(
-                        f"Processing chunk {i+1} of file "
-                        f"{dyn_path.stem}"
-                    )
-                    dc = self._dynamic_preprocessor(dc)
-                    sc = self._static_preprocessor(sc)     
-                    yield dc, sc
 
 # DEPRECATED v ================================================================
 class Loader:
