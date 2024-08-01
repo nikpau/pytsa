@@ -506,7 +506,7 @@ class TargetShipConstructor:
         dyn = dyn.sort_values(by=BaseColumns.TIMESTAMP.value)
         stat = stat.sort_values(by=BaseColumns.TIMESTAMP.value)
         dyn_grouped = dyn.groupby(Msg12318Columns.MMSI.value)
-        logger.info(
+        logger.debug(
             f"Process no. {os.getpid()} is constructing target ships"
             "...this may take a while."
         )

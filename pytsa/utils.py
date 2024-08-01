@@ -425,14 +425,14 @@ class DataLoader:
             )
             processes.append(pdyn)
 
-        logger.info("Reading file in parallel...") 
+        logger.debug("Reading file in parallel...") 
         for p in processes:
             p.start()
             
         # Collect the data into shared memory
         start_index = 0
         for entry in range(njobs):
-            logger.info(f"Collecting chunk {entry+1}/{njobs}")
+            logger.debug(f"Collecting chunk {entry+1}/{njobs}")
             df_chunk: pd.DataFrame = queue.get()
             end_index = start_index + df_chunk.size
             np_array_chunk = df_chunk.to_numpy()
@@ -440,7 +440,7 @@ class DataLoader:
             start_index = end_index 
             logger.debug(f"End index at {end_index/(nrows*ncolumns)*100:.1f}%.")
 
-        logger.info("File contents placed in shared memory.")
+        logger.debug("File contents placed in shared memory.")
         return shared, (nrows, ncolumns), rows_to_read
     
     def from_raw(self, raw_dyn: Path, raw_stat: Path) -> tuple[pd.DataFrame,pd.DataFrame]:
