@@ -106,10 +106,15 @@ class Inspector:
             logger.info(f"Inspecting target ship {i+1}/{nships}")
             for track in target_ship.tracks:
                 _n += 1
-                if self.condition(track):
-                    self.reject_track(target_ship,track)
-                else:
-                    self.accept_track(target_ship,track)
+                try:
+                    if self.condition(track):
+                        self.reject_track(target_ship,track)
+                    else:
+                        self.accept_track(target_ship,track)
+                except Exception as e:
+                    logger.warning(
+                        f"Track from ship {target_ship.mmsi} skipped: {e}"
+                    )
         return self.accepted, self.rejected, _n
     
     def reject_track(self,
