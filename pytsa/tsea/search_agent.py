@@ -442,12 +442,13 @@ class TargetShipConstructor:
                 
         dyn = dyn.sort_values(by=BaseColumns.TIMESTAMP.value)
         
-        for ts,lat,lon,sog,cog in zip(
+        for ts,lat,lon,sog,cog,sec in zip(
             dyn[BaseColumns.TIMESTAMP.value], 
             dyn[Msg12318Columns.LAT.value],  
             dyn[Msg12318Columns.LON.value],       
             dyn[Msg12318Columns.SPEED.value],
-            dyn[Msg12318Columns.COURSE.value]):
+            dyn[Msg12318Columns.COURSE.value],
+            dyn[Msg12318Columns.SECONDS.value]):
             
             ts: pd.Timestamp # make type hinting happy
             
@@ -455,7 +456,8 @@ class TargetShipConstructor:
                 sender=MMSI,
                 timestamp=int(ts.timestamp()), # Convert to unix
                 lat=lat,lon=lon,
-                COG=cog,SOG=sog
+                COG=cog,SOG=sog,
+                second=sec
             )
             if first:
                 tv.tracks[-1].append(msg)
@@ -527,7 +529,8 @@ class TargetShipConstructor:
                     sender=mmsi,
                     timestamp=int(row.timestamp),
                     lat=row.lat, lon=row.lon,
-                    COG=row.course, SOG=row.speed
+                    COG=row.course, SOG=row.speed,
+                    second=row.seconds
                 )
                 if first:
                     tv.tracks[-1].append(msg)
@@ -751,13 +754,14 @@ class TargetShipConstructor:
         targets: Targets = {}
         neighbors = neighbors.sort_values(by=BaseColumns.TIMESTAMP.value)
         
-        for mmsi,ts,lat,lon,sog,cog in zip(
+        for mmsi,ts,lat,lon,sog,cog, secs in zip(
             neighbors[Msg12318Columns.MMSI.value], 
             neighbors[BaseColumns.TIMESTAMP.value],
             neighbors[Msg12318Columns.LAT.value],  
             neighbors[Msg12318Columns.LON.value],
             neighbors[Msg12318Columns.SPEED.value],
-            neighbors[Msg12318Columns.COURSE.value]):
+            neighbors[Msg12318Columns.COURSE.value],
+            neighbors[Msg12318Columns.SECONDS.value]):
             
             ts: UNIX_TIMESTAMP = ts.to_pydatetime().timestamp() # Convert to unix
             
@@ -765,7 +769,9 @@ class TargetShipConstructor:
                 sender=mmsi,
                 timestamp=ts,
                 lat=lat,lon=lon,
-                COG=cog,SOG=sog
+                COG=cog,SOG=sog,
+                second=secs
+                
             )
             
             if mmsi not in targets:
