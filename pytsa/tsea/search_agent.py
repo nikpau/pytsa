@@ -471,17 +471,18 @@ class TargetShipConstructor:
 
         return {MMSI:tv}
     
-    def _impl_construct_multiple_target_vessels(self,
-                                                dyn: mp.Array,
-                                                stat: mp.Array,
-                                                dyn_shape: tuple[int,int],
-                                                stat_shape: tuple[int,int],
-                                                dyn_chunk_size: int,
-                                                stat_chunk_size: int,
-                                                dyn_cols: list[str],
-                                                stat_cols: list[str],
-                                                index: int,
-                                                resqueue: mp.Queue) -> Targets:
+    def _impl_construct_multiple_target_vessels(
+        self,
+        dyn: mp.Array,  # type: ignore
+        stat: mp.Array, # type: ignore
+        dyn_shape: tuple[int,int],
+        stat_shape: tuple[int,int],
+        dyn_chunk_size: int,
+        stat_chunk_size: int,
+        dyn_cols: list[str],
+        stat_cols: list[str],
+        index: int,
+        resqueue: mp.Queue) -> Targets:
         """
         Construct multiple TargetVessel objects from a given dataframe.
         """
@@ -686,7 +687,7 @@ class TargetShipConstructor:
                 if i == 0:
                     rejoined.append(track)
                     continue
-                if not self.splitter.is_split_point(rejoined[-1][-1],track[0]):
+                if not self.splitter.is_split_point(rejoined[-1][-1],track[0],tgt.length):
                     rejoined[-1].extend(track)
                     self._n_rejoined_tracks += 1
                 else:
@@ -704,6 +705,7 @@ class TargetShipConstructor:
         nvessels = len(targets)
         ctr = 0
         for tgt in list(targets.values()):
+            length = tgt.length
             logger.debug(
                 f"Processing target ship {tgt.mmsi} "
                 f"({ctr+1}/{nvessels})"
@@ -714,7 +716,7 @@ class TargetShipConstructor:
                 _itracks = [] # Intermediary track
                 tstartidx = 0
                 for i, (msg_t0,msg_t1) in enumerate(pairwise(track)):
-                    if self.splitter.is_split_point(msg_t0,msg_t1):
+                    if self.splitter.is_split_point(msg_t0,msg_t1,length):
                         _itracks.append(track[tstartidx:i+1])
                         tstartidx = i+1
                         self._n_split_points += 1
@@ -858,7 +860,7 @@ class TargetShipConstructor:
 
     def _get_ship_length(self, 
                          static_msgs: pd.DataFrame,
-                         mmsi: int) -> list[int]:
+                         mmsi: int) -> int | None:
         """
         Return the ship length of a given MMSI number.
 
@@ -872,9 +874,10 @@ class TargetShipConstructor:
         if sl.size > 1:
             logger.debug(
                 f"More than one ship length found for MMSI {mmsi}. "
-                f"Found {sl}.")
-            return sl
-        return list(sl)
+                f"Found {sl}, using the first one.")
+            return sl[0]
+        if sl.size == 0: return None
+        return sl[0]
     
     def print_trex_stats(self) -> str:
         """
