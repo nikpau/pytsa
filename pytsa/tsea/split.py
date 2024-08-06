@@ -1,10 +1,9 @@
 """
 Auxiliary functions for determining trajectory splitting points.
 """
-import numpy as np
 import pickle
 
-from ..structs import AISMessage
+from ..structs import AISMessage, LENGTH_BINS
 from .. import utils
 from ..logger import logger
 from ..data.quantiles import __path__ as _DATA_DIR
@@ -15,51 +14,21 @@ from ..data.quantiles import __path__ as _DATA_DIR
 # allow for quantiles from 0% up to 99.9%
 # in 0.1% steps.
 DATA_DIR = _DATA_DIR[0]
-with open(f"{DATA_DIR}/dquants.pkl","rb") as f:
-    _DQUANTILES = pickle.load(f)
-with open(f"{DATA_DIR}/trquants.pkl","rb") as f:
-    _TRQUANTILES = pickle.load(f)
-with open(f"{DATA_DIR}/squants.pkl","rb") as f:
-    _SQUANTILES = pickle.load(f)
-with open(f"{DATA_DIR}/diffquants.pkl","rb") as f:
-    _RMCSQUANTILES = pickle.load(f)
-with open(f"{DATA_DIR}/tquants.pkl","rb") as f:
-    _TQUANTILES = pickle.load(f)
+
+FNAMES = [
+    "dquants",    # Distance quantiles
+    "trquants",   # Turning rate quantiles
+    "squants",    # Speed quantiles
+    "diffquants", # Difference between reported and calculated speed quantiles
+    "tquants"     # Time difference quantiles
+]
+
+# Load the quantiles
+with open(f"{DATA_DIR}/quantiles.pkl","rb") as f:
+    QUANTILES = pickle.load(f)
     
-# Convert quantiles to dictionaries
-# with the quantile as key and the
-# quantile value as value. 
-# ==================================
-_NQ = 10001 # Number of quantiles
-# We have to round the quantiles to
-# avoid floating point errors when using
-# them as keys in dictionaries.
-_QVALUES = np.round(np.linspace(0,1,_NQ),4) # Quantile values
-# Empirical quantiles for the
-# turning rate [°/s] between two 
-# consecutive messages.
-TRQUANTILES = {_QVALUES[k]: _TRQUANTILES[k] for k in range(_NQ)}
-
-# Empirical quantiles for the
-# change in speed [kn] between two
-# consecutive messages.
-SQUANTILES = {_QVALUES[k]: _SQUANTILES[k] for k in range(_NQ)}
-
-# Empirical quantiles for the
-# distance [mi] between two consecutive
-# messages. NOTE: NOT USED in original paper.
-DQUANTILES = {_QVALUES[k]: _DQUANTILES[k] for k in range(_NQ)}
-
-# Empirical quantiles for the
-# difference between the reported
-# speed [kn] and the speed calculated
-# from the spatial difference and time difference.
-RMCSQUANTILES = {_QVALUES[k]: _RMCSQUANTILES[k] for k in range(_NQ)}
-
-# Empirical quantiles for the
-# time difference [s] between two
-# consecutive messages.
-TQUANTILES = {_QVALUES[k]: _TQUANTILES[k] for k in range(_NQ)}
+with open(f"{DATA_DIR}/independent/iquantiles.pkl","rb") as f:
+    IQUANTILES = pickle.load(f)
 
 
 class Splitter:
@@ -95,13 +64,18 @@ class Splitter:
     
     def speed_change_too_large(self,
                                msg_t0: AISMessage, 
-                               msg_t1: AISMessage) -> bool:
+                               msg_t1: AISMessage,
+                               length_bin:str | None) -> bool:
         """
         Return True if the change in speed between two AIS Messages
         is larger than the 95% quantile of the speed change distribution.
         """
+        if length_bin is None:
+            q = IQUANTILES["squants"][self.ST]
+        else:
+            q = QUANTILES["squants"][length_bin][self.ST]
         too_large =  (
-            abs(msg_t1.SOG - msg_t0.SOG) > SQUANTILES[self.ST]
+            abs(msg_t1.SOG - msg_t0.SOG) > q
         )
         if too_large:
             self._speed_change += 1
@@ -110,13 +84,18 @@ class Splitter:
         
     def turning_rate_too_large(self,
                                msg_t0: AISMessage, 
-                               msg_t1: AISMessage) -> bool:
+                               msg_t1: AISMessage,
+                               length_bin: str | None) -> bool:
         """
         Return True if the change in heading between two AIS Messages
         is larger than the alpha-quantile of the heading change distribution.
         """
-        col = TRQUANTILES[self.DTL]
-        cou = TRQUANTILES[self.DTU]
+        if length_bin is None:
+            col = IQUANTILES["trquants"][self.DTL]
+            cou = IQUANTILES["trquants"][self.DTU]
+        else:
+            col = QUANTILES["trquants"][length_bin][self.DTL]
+            cou = QUANTILES["trquants"][length_bin][self.DTU]
         hc = utils.heading_change(msg_t0.COG,msg_t1.COG)
         td = msg_t1.timestamp - msg_t0.timestamp
         too_large = not col < (hc/td) < cou
@@ -127,14 +106,18 @@ class Splitter:
     
     def distance_too_large(self,
                            msg_t0: AISMessage, 
-                           msg_t1: AISMessage) -> bool:
+                           msg_t1: AISMessage,
+                           length_bin: str | None) -> bool:
         """
         Return True if the spatial difference between two AIS Messages
         is larger than the alpha-quantile of the distance distribution.
         """
         d = utils.greater_circle_distance(
             msg_t0.lon,msg_t0.lat,msg_t1.lon,msg_t1.lat,method="haversine")
-        too_large = d > DQUANTILES[self.ST]
+        if length_bin is None:
+            too_large = d > IQUANTILES["dquants"][self.ST]
+        else:
+            too_large = d > QUANTILES["dquants"][length_bin][self.ST]
         if too_large:
             self._distance += 1
             return too_large
@@ -154,7 +137,7 @@ class Splitter:
 
     @staticmethod
     def avg_speed(msg_t0: AISMessage, 
-                msg_t1: AISMessage) -> float:
+                  msg_t1: AISMessage) -> float:
         """
         Return the average speed [kn] between two AIS Messages
         as reported by the AIS.
@@ -165,7 +148,8 @@ class Splitter:
     def deviation_from_reported_too_large(
         self,
         msg_t0: AISMessage,
-        msg_t1: AISMessage) -> bool:
+        msg_t1: AISMessage,
+        length_bin: str | None) -> bool:
             """
             Return True if the difference between the reported speed [kn] 
             from the AIS record and the speed calculated from the spatial 
@@ -174,8 +158,12 @@ class Splitter:
             """
             msgs = (msg_t0,msg_t1)
             diff = self.avg_speed(*msgs) - self.speed_from_position(*msgs)
-            col = RMCSQUANTILES[self.DTL]
-            cou = RMCSQUANTILES[self.DTU]
+            if length_bin is None:
+                col = IQUANTILES["diffquants"][self.DTL]
+                cou = IQUANTILES["diffquants"][self.DTU]
+            else:
+                col = QUANTILES["diffquants"][length_bin][self.DTL]
+                cou = QUANTILES["diffquants"][length_bin][self.DTU]
             too_large = not col < diff < cou
             if too_large:
                 self._deviation += 1
@@ -184,12 +172,16 @@ class Splitter:
             
     def time_difference_too_large(self,
                                   msg_t0: AISMessage,
-                                  msg_t1: AISMessage) -> bool:
+                                  msg_t1: AISMessage,
+                                  length_bin: str | None) -> bool:
             """
             Return True if the time difference between two AIS Messages
             is larger than the 95% quantile of the time difference distribution.
             """
-            co = TQUANTILES[self.ST]
+            if length_bin is None:
+                co = IQUANTILES["tquants"][self.ST]
+            else: 
+                co = QUANTILES["tquants"][length_bin][self.ST]
             too_large = not (
                 co > (msg_t1.timestamp - msg_t0.timestamp)
             )
@@ -200,12 +192,16 @@ class Splitter:
                 
     def is_split_point(self,
                     msg_t0: AISMessage,
-                    msg_t1: AISMessage) -> bool:
+                    msg_t1: AISMessage,
+                    ship_length: str | None) -> bool:
         """
         Pipeline function for checking whether a given
         AIS Message pair is a valid split point.
         """
         split = []
+        if ship_length is None:
+            lengthbin = None
+        else: lengthbin = get_length_bin(ship_length)
         for f in (
             self.deviation_from_reported_too_large,
             self.time_difference_too_large,
@@ -213,7 +209,7 @@ class Splitter:
             self.speed_change_too_large,
             self.turning_rate_too_large
         ):
-            split.append(f(msg_t0,msg_t1))
+            split.append(f(msg_t0,msg_t1,lengthbin))
         return any(split)
         
     def print_split_stats(self) -> None:
@@ -237,4 +233,11 @@ class Splitter:
         logger.info(f"{'Time difference too large':<30}{self._time_difference:>20}")
         logger.info(separator)
         
-        
+def get_length_bin(ship_length: float) -> str:
+    """
+    Return the length bin for a given ship length.
+    """
+    for b1, b2 in zip(LENGTH_BINS,LENGTH_BINS[1:]):
+        if b1 <= ship_length < b2:
+            return f"{b1}-{b2}"
+    return f"{LENGTH_BINS[-2]}-{LENGTH_BINS[-1]}"

@@ -22,6 +22,9 @@ NOINDEX = NOINDEX_TYPE()
 class ShellError(Exception):
     pass
 
+# Bins for length-division of the quantiles
+LENGTH_BINS = [0.,25.,50.,75.,100.,125.,150.,175.,200.,float("inf")]
+
 def _mflatten(l):
     """
     Flatten a mixed list
