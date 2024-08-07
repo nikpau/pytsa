@@ -392,7 +392,6 @@ class DataLoader:
             shared memory array.
         """
         assert info in ["dynamic", "static"], "Invalid info: {}".format(info)
-        logger.info(f"Processing {info} messages file: {file.stem}")
         logger.debug(f"Calculating number of rows.")
         
         with open(file) as f:

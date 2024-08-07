@@ -722,15 +722,15 @@ class TargetShipConstructor:
             ctr += 1
             for track in tgt.tracks:
                 track.sort(key=lambda x: x.timestamp)
-                _itracks = [] # Intermediary track
-                tstartidx = 0
+                _itracks = [[tgt.tracks[0][0]]] # Intermediary track
                 for i, (msg_t0,msg_t1) in enumerate(pairwise(track)):
                     if self.splitter.is_split_point(msg_t0,msg_t1,length):
-                        _itracks.append(track[tstartidx:i+1])
-                        tstartidx = i+1
+                        _itracks.append([msg_t1])
                         self._n_split_points += 1
-            # Only keep tracks with more than one observation
-            tgt.tracks = [track for track in _itracks if len(track) > 2]
+                    else:    
+                        _itracks[-1].append(msg_t1)
+            # Recombine tracks
+            tgt.tracks = [track for track in _itracks if len(track) > 1]
             # If no tracks are left, remove target ship
             if not tgt.tracks:
                 logger.debug(
