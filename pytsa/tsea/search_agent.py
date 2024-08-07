@@ -426,24 +426,6 @@ class TargetShipConstructor:
         self._n_obs_raw = 0
         self._n_trajectories = 0
 
-    def _distribute(self, df: pd.DataFrame ) -> list[pd.DataFrame]:
-        """
-        Distribute a given dataframe into `nparts`
-        equally sized smaller data frames.
-
-        Parameters:
-        -----------------
-        dyn (pd.DataFrame): Pandas DataFrame containing the
-            dynamic AIS messages.
-
-        Returns:
-        -----------------
-        List of DataFrames: A list of DataFrames, 
-        each being a part of the original DataFrame.
-        """
-        grouped = df.groupby(Msg12318Columns.MMSI.value)
-        return [group for _, group in grouped]
-    
     def _impl_construct_target_vessel(self, 
                                       dyn: pd.DataFrame,
                                       stat: pd.DataFrame) -> Targets:
@@ -580,6 +562,7 @@ class TargetShipConstructor:
         self.reset_stats()
         singles: list[Targets] = []
         for dynfile, statfile in self.data_loader.get_file():
+            logger.info(f"Processing files for {dynfile.stem}")
             dynshared, dynshape, dynchunk = self.data_loader.prepare_shared_array(
                 file = dynfile,
                 column_names = self.data_loader.dynamic_columns,
@@ -609,7 +592,8 @@ class TargetShipConstructor:
                 )
                 processes.append(p)
                 p.start()
-                
+            
+            logger.info("Constructing target vessels...") 
             for _ in range(njobs):
                 singles.append(resqueue.get())
 
