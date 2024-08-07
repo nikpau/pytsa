@@ -7,17 +7,19 @@ used in the paper, but are included here
 anyways, as they might be useful for future
 work.
 """
+import requests
 import utm
 import geopandas as gpd
 import numpy as np
 
-from pytsa import BoundingBox, TargetShip
-from pytsa.trajectories import inspect
-from pytsa.structs import Track
 from glob import glob
 from pathlib import Path
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from pytsa.structs import Track
 from scipy.spatial import ConvexHull
+from osm2geojson import json2geojson
+from pytsa.trajectories import inspect
+from pytsa import BoundingBox, TargetShip
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from . import plt, PLOT_FOLDER, mpl, COLORWHEEL_MAP
 from ..data.geometry import __path__ as geometry_path
@@ -99,6 +101,27 @@ def plot_coastline(extent: BoundingBox,
         gdf = gpd.read_file(coast)
         gdf.crs = 'epsg:3395' # Mercator projection
         gdf.plot(ax=ax, color="#007d57", alpha=0.8,linewidth=2)
+    
+        queries = [
+        get_overpass_roads_motorway(extent),
+        get_overpass_roads_primary(extent),
+        get_overpass_roads_secondary(extent),
+        get_overpass_roads_tertiary(extent),
+    ]
+        
+    # Additional query for overpass API
+    for query, color, width in zip(
+        queries, 
+        ["#DB3123","#dba119","#bfa246","#999999"],
+        [1,1,0.5,0.3]
+        
+        ):
+        url = f"https://overpass-api.de/api/interpreter?data={query}"
+        r = requests.get(url)
+        data = r.json()
+        data = json2geojson(data)
+        gdf = gpd.GeoDataFrame.from_features(data["features"])
+        gdf.plot(ax=ax, color=color, linewidth=width)
         
     # Crop the plot to the extent
     ax.set_xlim(extent.LONMIN, extent.LONMAX)
@@ -492,3 +515,64 @@ def cvh_range_comparison(ships: dict[int,TargetShip]) -> None:
     plt.tight_layout()
     plt.savefig(_check_duplicate_file_name("cvhjitter.pdf"))
     plt.close()    
+
+# OSM Overpass API cals for primary, secondary and tertiary roads
+def get_overpass_roads_motorway(bb: BoundingBox) -> str:
+    bbstr = f"{bb.LATMIN},{bb.LONMIN},{bb.LATMAX},{bb.LONMAX}"
+    return f"""
+        [out:json][timeout:100];
+        // fetch only larger roads and their relations within the bounding box
+        (
+        way["highway"~"motorway|trunk"]({bbstr});
+        relation["highway"~"motorway|trunk"]({bbstr});
+        );
+        out geom;
+        """
+
+def get_overpass_roads_primary(bb: BoundingBox) -> str:
+    bbstr = f"{bb.LATMIN},{bb.LONMIN},{bb.LATMAX},{bb.LONMAX}"
+    return f"""
+        [out:json][timeout:100];
+        // fetch only larger roads and their relations within the bounding box
+        (
+        way["highway"~"primary"]({bbstr});
+        relation["highway"~"primary"]({bbstr});
+        );
+        out geom;
+        """
+
+def get_overpass_roads_secondary(bb: BoundingBox) -> str:
+    bbstr = f"{bb.LATMIN},{bb.LONMIN},{bb.LATMAX},{bb.LONMAX}"
+    return f"""
+        [out:json][timeout:100];
+        // fetch only larger roads and their relations within the bounding box
+        (
+        way["highway"~"secondary"]({bbstr});
+        relation["highway"~"secondary"]({bbstr});
+        );
+        out geom;
+        """
+
+def get_overpass_roads_tertiary(bb: BoundingBox) -> str:
+    bbstr = f"{bb.LATMIN},{bb.LONMIN},{bb.LATMAX},{bb.LONMAX}"
+    return f"""
+        [out:json][timeout:100];
+        // fetch only larger roads and their relations within the bounding box
+        (
+        way["highway"~"tertiary"]({bbstr});
+        relation["highway"~"tertiary"]({bbstr});
+        );
+        out geom;
+        """
+
+def get_overpass_roads_all(bb: BoundingBox) -> str:
+    bbstr = f"{bb.LATMIN},{bb.LONMIN},{bb.LATMAX},{bb.LONMAX}"
+    return f"""
+        [out:json][timeout:100];
+        // fetch only larger roads and their relations within the bounding box
+        (
+        way["highway"~"motorway|trunk|primary|secondary|tertiary|residential"]({bbstr});
+        relation["highway"~"motorway|trunk|primary|secondary|tertiary|residential"]({bbstr});
+        );
+        out geom;
+        """
