@@ -178,10 +178,7 @@ class Splitter:
             Return True if the time difference between two AIS Messages
             is larger than the 95% quantile of the time difference distribution.
             """
-            if length_bin is None:
-                co = IQUANTILES["tquants"][self.ST]
-            else: 
-                co = QUANTILES["tquants"][length_bin][self.ST]
+            co = IQUANTILES["tquants"][self.ST]
             too_large = not (
                 co > (msg_t1.timestamp - msg_t0.timestamp)
             )
