@@ -26,6 +26,28 @@ from ..decoder.filedescriptor import (
     BaseColumns, Msg12318Columns, Msg5Columns
 )
 
+# Not all ships always report thier static voyage report
+# in time or not at all. Since this apporach is based on
+# the length of the ship, we need to infer a ship's length
+# if it was not reported. For this reason, we calculated 
+# the average and median length for all ship types and
+# use this value as a fallback if the length is not reported.
+#                            |------------Average
+AVGLENGTHS = {#              v     v------Median
+    ShipType.NOTAVAILABLE: (47.13,31),
+    ShipType.WIG:          (71.71,82),
+    ShipType.FISHING:      (29.32,23),
+    ShipType.TUGTOW:       (31.55,28),
+    ShipType.MILITARY:     (45.96,30),
+    ShipType.SAILING:      (32.42,30),
+    ShipType.PLEASURE:     (29.72,23),
+    ShipType.HSC:          (28.61,25),
+    ShipType.PASSENGER:    (68.82,42),
+    ShipType.CARGO:       (114.83,90),
+    ShipType.TANKER:      (128.53,110),
+    ShipType.OTHER:        (46.07,31)
+}
+
 def _identity(x):
     return x
 
@@ -431,11 +453,12 @@ class TargetShipConstructor:
         MMSI = int(dyn[Msg12318Columns.MMSI.value].iloc[0])
         ts = dyn[BaseColumns.TIMESTAMP.value].iloc[0].to_pydatetime().timestamp()
         # Initialize TargetVessel object
+        ship_type = self._get_ship_type(stat,MMSI,ts) 
         tv =  TargetShip(
             ts = None,
             mmsi=MMSI,
-            ship_type=self._get_ship_type(stat,MMSI,ts),
-            length=self._get_ship_length(stat,MMSI),
+            ship_type=ship_type,
+            length=self._get_ship_length(stat,MMSI, ship_type),
             tracks=[[]]
         )
         first = True
@@ -448,7 +471,7 @@ class TargetShipConstructor:
             dyn[Msg12318Columns.LON.value],       
             dyn[Msg12318Columns.SPEED.value],
             dyn[Msg12318Columns.COURSE.value],
-            dyn[Msg12318Columns.SECONDS.value]):
+            dyn[Msg12318Columns.SECOND.value]):
             
             ts: pd.Timestamp # make type hinting happy
             
@@ -517,11 +540,12 @@ class TargetShipConstructor:
             logger.debug(f"Processing MMSI {mmsi}")
             mmsi = int(mmsi)
             ts = group[BaseColumns.TIMESTAMP.value].iloc[0]
+            ship_type = self._get_ship_type(stat,mmsi,ts)
             tv = TargetShip(
                 ts=None,
                 mmsi=mmsi,
-                ship_type=self._get_ship_type(stat, mmsi, ts),
-                length=self._get_ship_length(stat, mmsi),
+                ship_type=ship_type,
+                length=self._get_ship_length(stat, mmsi,ship_type),
                 tracks=[[]]
             )
             first = True
@@ -531,7 +555,7 @@ class TargetShipConstructor:
                     timestamp=int(row.timestamp),
                     lat=row.lat, lon=row.lon,
                     COG=row.course, SOG=row.speed,
-                    second=row.seconds
+                    second=row.second
                 )
                 if first:
                     tv.tracks[-1].append(msg)
@@ -561,6 +585,7 @@ class TargetShipConstructor:
                 column_names = self.data_loader.dynamic_columns,
                 njobs=njobs,
                 info="dynamic")
+            self._n_obs_raw += dynshape[0]
             
             statshared, statshape, statchunk = self.data_loader.prepare_shared_array(
                 file = statfile,
@@ -763,7 +788,7 @@ class TargetShipConstructor:
             neighbors[Msg12318Columns.LON.value],
             neighbors[Msg12318Columns.SPEED.value],
             neighbors[Msg12318Columns.COURSE.value],
-            neighbors[Msg12318Columns.SECONDS.value]):
+            neighbors[Msg12318Columns.SECOND.value]):
             
             ts: UNIX_TIMESTAMP = ts.to_pydatetime().timestamp() # Convert to unix
             
@@ -860,7 +885,8 @@ class TargetShipConstructor:
 
     def _get_ship_length(self, 
                          static_msgs: pd.DataFrame,
-                         mmsi: int) -> int | None:
+                         mmsi: int,
+                         ship_type: ShipType) -> int | None:
         """
         Return the ship length of a given MMSI number.
 
@@ -876,7 +902,7 @@ class TargetShipConstructor:
                 f"More than one ship length found for MMSI {mmsi}. "
                 f"Found {sl}, using the first one.")
             return sl[0]
-        if sl.size == 0: return None
+        if sl.size == 0: return AVGLENGTHS[ship_type][1] # Return median
         return sl[0]
     
     def print_trex_stats(self) -> str:

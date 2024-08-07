@@ -34,7 +34,7 @@ class Msg12318Columns(Enum):
     """
     __order__ = (
         "MMSI LAT LON SPEED COURSE "
-        "TURN SECONDS"
+        "TURN SECOND"
     )
     MMSI: str = "MMSI"
     LAT: str = "lat"
@@ -42,7 +42,7 @@ class Msg12318Columns(Enum):
     SPEED: str = "speed"
     COURSE: str = "course"
     TURN: str = "turn"
-    SECONDS: str = "seconds"
+    SECOND: str = "second"
 
 class Msg5Columns(Enum):
     """

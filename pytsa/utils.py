@@ -128,7 +128,8 @@ class DataLoader:
         Msg12318Columns.LAT.value,
         Msg12318Columns.LON.value,
         Msg12318Columns.SPEED.value,
-        Msg12318Columns.COURSE.value
+        Msg12318Columns.COURSE.value,
+        Msg12318Columns.SECOND.value,
     ]
     
     static_columns = [
@@ -342,11 +343,12 @@ class DataLoader:
         queue.put(df)
         return None
     
-    def prepare_shared_array(self,                               
-                            file: Path,
-                            column_names: list[str],
-                            njobs: int,
-                            info: str) -> tuple[mp.Array, tuple[int,int], int]:
+    def prepare_shared_array(
+        self,                               
+        file: Path,
+        column_names: list[str],
+        njobs: int,
+        info: str) -> tuple[mp.Array, tuple[int,int], int]: # type: ignore
         """
         Prepares a shared memory array for the given CSV file, 
         dividing the work among multiple processes.
