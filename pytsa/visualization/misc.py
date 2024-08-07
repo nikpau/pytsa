@@ -65,7 +65,8 @@ def _cvh_area(track: Track) -> float:
 def plot_coastline(extent: BoundingBox, 
                    ax: plt.Axes = None,
                    save_plot: bool = False,
-                   return_figure: bool = False) -> plt.Figure | None:
+                   return_figure: bool = False,
+                   detail_lvl: int = 4) -> plt.Figure | None:
     """
     Plots the coastline of the search area.
     
@@ -87,6 +88,12 @@ def plot_coastline(extent: BoundingBox,
         Whether to save the plot to the `PLOT_FOLDER`.
     return_figure : bool, optional
         Whether to return the figure.
+    detail_lvl : int, optional
+        The level of detail of the road network:
+        1: motorways
+        2: motorways and primary roads
+        3: motorways, primary and secondary roads
+        4: motorways, primary, secondary and tertiary roads
         
     Returns
     -------
@@ -100,7 +107,7 @@ def plot_coastline(extent: BoundingBox,
     for coast in coasts:
         gdf = gpd.read_file(coast)
         gdf.crs = 'epsg:3395' # Mercator projection
-        gdf.plot(ax=ax, color="#007d57", alpha=0.8,linewidth=2)
+        gdf.plot(ax=ax, color="#00657d", alpha=0.8,linewidth=2)
     
         queries = [
         get_overpass_roads_motorway(extent),
@@ -110,6 +117,7 @@ def plot_coastline(extent: BoundingBox,
     ]
         
     # Additional query for overpass API
+    level = 0
     for query, color, width in zip(
         queries, 
         ["#DB3123","#dba119","#bfa246","#999999"],
@@ -122,6 +130,9 @@ def plot_coastline(extent: BoundingBox,
         data = json2geojson(data)
         gdf = gpd.GeoDataFrame.from_features(data["features"])
         gdf.plot(ax=ax, color=color, linewidth=width)
+        level += 1
+        if level == detail_lvl:
+            break
         
     # Crop the plot to the extent
     ax.set_xlim(extent.LONMIN, extent.LONMAX)
@@ -180,7 +191,7 @@ def binned_heatmap(targets: Targets,
 
     # Add coastline redered to an image
     # and plot it on top of the heatmap
-    plot_coastline(bb,ax=ax)
+    plot_coastline(bb,ax=ax,detail_lvl=1)
     
     # Mask the pixels with no messages
     counts = np.ma.masked_where(counts == 0,counts)
