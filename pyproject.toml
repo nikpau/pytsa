@@ -30,6 +30,7 @@ dependencies = [
     "utm >= 0.7.0",
     "vincenty >=0.1.4",
     "tomli >=2.0.1",
+    "osm2geojson >=0.2.5"
 ]
 
 [project.urls]
