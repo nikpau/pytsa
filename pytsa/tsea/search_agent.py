@@ -27,11 +27,12 @@ from ..decoder.filedescriptor import (
 )
 
 # Not all ships always report thier static voyage report
-# in time or not at all. Since this apporach is based on
-# the length of the ship, we need to infer a ship's length
-# if it was not reported. For this reason, we calculated 
-# the average and median length for all ship types and
-# use this value as a fallback if the length is not reported.
+# in time or not at all. Since our apporach is based on
+# the length of the ship as a maneuvering proxy,
+# we need to infer a ship's length if it was not reported. 
+# For this reason, we calculated the average and median
+# length for all ship types and use this value as a 
+# fallback if the length is not reported.
 #                            |------------Average
 AVGLENGTHS = {#              v     v------Median
     ShipType.NOTAVAILABLE: (47.13,31),
@@ -123,7 +124,7 @@ class NeighborhoodTreeSearch:
 
         """
         if not self.data.loaded:
-            self.data.load() # Load data into memory
+            self.data.load_all() # Load data into memory
         
         filtered = self._time_filter(
             self.data.dynamic_data,tpos.timestamp,self.time_delta
@@ -322,7 +323,7 @@ class SearchAgent:
 
         constructor = TargetShipConstructor(
             self.data_loader,
-            split.Splitter()
+            split.PauligTREX(0.05) # Placeholder
         )
         tgts = constructor._sp_construct_target_vessels(neighbors,tpos,True)
         # Contruct Splines for all target ships
@@ -330,9 +331,10 @@ class SearchAgent:
         return tgts
     
     def extract_all(self,
+                    method: split.TREXMethod = split.TREXMethod.PAULIG,
                     njobs: int = 4, 
-                    alpha: float = 0.05,
-                    skip_tsplit: bool = False) -> Targets:
+                    skip_tsplit: bool = False,
+                    **skwargs) -> Targets:
         """
         Extracts a dictionary of all target ships in the
         frame of the search agent using the split-point
@@ -340,32 +342,40 @@ class SearchAgent:
         
         Parameters:
         ----------
+        method: split.TREXMethod
+            The split-point method to use for trajectory extraction.
         njobs: int
             Number of jobs to use for multiprocessing.
-        alpha: float
-            The significance level for the quantiles used
-            in the split point detection. Default is 0.05.
         skip_tsplit: bool
             If True, the split-point method is not used
             to split the tracks of the target ships.
             Instead, all vessels will only have one track,
             containing all time-ordered AIS messages
             comning from the same MMSI.
+        skwargs: dict
+            Additional keyword arguments for the split-point
+            method. See the documentation of the split-point
+            methods for more information.
             
         Returns:
         --------
         dict: A dictionary of dict[MMSI,TargetShip]. 
         """
-        splitter = split.Splitter(alpha)
+        arginfo = "default args" if not skwargs else f"args: {skwargs}"
+        loggercall = logger.warning if not skwargs else logger.info
+        spl = method.value(**skwargs)
+        loggercall(
+            "Using split-point method: " + spl.__class__.NAME + f" with {arginfo}."
+        )
         constructor = TargetShipConstructor(
             self.data_loader,
-            splitter
+            spl
         )
         targets = constructor._mp_construct_target_vessels(
             njobs,skip_tsplit
         )
-        constructor.print_trex_stats()
-        splitter.print_split_stats()
+        constructor.print_trex_stats(spl)
+        split.print_split_stats(spl)
         
         # Reset data loader since the generators
         # are exhausted.
@@ -403,10 +413,9 @@ class TargetShipConstructor:
             An instance of the `pytsa.utils.DataLoader` 
             class used to load AIS message data.
         `splitter`:
-            An instance of the `pytsa.tsea.split.Splitter`
-            class used to determine split points in
-            trajectories.
-
+            Enum value of the split-point method used
+            for trajectory extraction.
+            
     Methods:
         `construct_target_vessels`: 
             Constructs TargetVessel objects from 
@@ -414,9 +423,12 @@ class TargetShipConstructor:
     """
     def __init__(self, 
                  data_loader: DataLoader,
-                 splitter: split.Splitter) -> None:
+                 splitter: split.ANY_SPLITTER) -> None:
         
         self.data_loader = data_loader
+        
+        assert isinstance(splitter,split.ANY_SPLITTER), \
+            "Splitter must be one of the split-point classes."
         self.splitter = splitter
         
         # Statistics
@@ -440,7 +452,7 @@ class TargetShipConstructor:
             ts = None,
             mmsi=MMSI,
             ship_type=ship_type,
-            length=self._get_ship_length(stat,MMSI, ship_type),
+            ship_length=self._get_ship_length(stat,MMSI, ship_type),
             tracks=[[]]
         )
         first = True
@@ -527,7 +539,7 @@ class TargetShipConstructor:
                 ts=None,
                 mmsi=mmsi,
                 ship_type=ship_type,
-                length=self._get_ship_length(stat, mmsi,ship_type),
+                ship_length=self._get_ship_length(stat, mmsi,ship_type),
                 tracks=[[]]
             )
             first = True
@@ -559,7 +571,7 @@ class TargetShipConstructor:
         containing only messages from a single MMSI. These dataframes
         are then processed in parallel and the results are merged.
         """
-        self.reset_stats()
+        self.splitter.reset()
         singles: list[Targets] = []
         for dynfile, statfile in self.data_loader.get_file():
             logger.info(f"Processing files for {dynfile.stem}")
@@ -604,9 +616,9 @@ class TargetShipConstructor:
         targets = self._remove_duplicates(targets)
         if not skip_tsplit:
             logger.info("Splitting tracks...")
-            targets = self._rejoin_tracks(
-                self._determine_split_points(targets)
-            )
+            for target in targets.values():
+                self.splitter.trex(target)
+            
         self._n_trajectories = sum([len(tgt.tracks) for tgt in targets.values()])
         return targets
         
@@ -656,90 +668,6 @@ class TargetShipConstructor:
                     )
         return targets
     
-    def _rejoin_tracks(self,
-                       targets: Targets) -> Targets:
-        """
-        During the application of the split-point method,
-        we split a trajectory into multiple tracks if two 
-        consecutive AIS messages do not fall into the 
-        95th percentile bounds of the defined metrics 
-        in the paper.
-        
-        In case of a single erroneous AIS message, the
-        split-point method will split the trajectory into
-        a first part containing everything before the
-        erroneous message, a second part containing only
-        the erroneous message and a third part containing
-        everything after the erroneous message. If the 
-        erroneous part in the middle has only one or two 
-        AIS messages, it is removed, leaving us with two 
-        separate tracks.
-        
-        This leads to a situation where a single erroneous
-        message can lead to the creation of two or three 
-        separate tracks, of which the first and the last 
-        logically belong together.
-        
-        This function determines whether the last AIS message
-        of the first track and the first AIS message of the
-        second track are close enough to be considered as
-        part of the same track. If so, the two tracks are
-        joined together.
-        
-        Judgment is based on the same split-point metrics
-        as used for the initial split.
-        """
-        logger.info("Rejoining tracks...")
-        for tgt in targets.values():
-            rejoined = []
-            for i, track in enumerate(tgt.tracks):
-                if i == 0:
-                    rejoined.append(track)
-                    continue
-                if not self.splitter.is_split_point(rejoined[-1][-1],track[0],tgt.length):
-                    rejoined[-1].extend(track)
-                    self._n_rejoined_tracks += 1
-                else:
-                    rejoined.append(track)
-            tgt.tracks = rejoined
-        logger.info(f"Rejoined {self._n_rejoined_tracks} tracks.")
-        return targets
-                    
-    def _determine_split_points(self,
-                                targets: Targets) -> Targets:
-        """
-        Determine split points for all target ships.
-        """
-        logger.info("Determining split points...")
-        nvessels = len(targets)
-        ctr = 0
-        for tgt in list(targets.values()):
-            length = tgt.length
-            logger.debug(
-                f"Processing target ship {tgt.mmsi} "
-                f"({ctr+1}/{nvessels})"
-            )
-            ctr += 1
-            for track in tgt.tracks:
-                track.sort(key=lambda x: x.timestamp)
-                _itracks = [[tgt.tracks[0][0]]] # Intermediary track
-                for i, (msg_t0,msg_t1) in enumerate(pairwise(track)):
-                    if self.splitter.is_split_point(msg_t0,msg_t1,length):
-                        _itracks.append([msg_t1])
-                        self._n_split_points += 1
-                    else:    
-                        _itracks[-1].append(msg_t1)
-            # Recombine tracks
-            tgt.tracks = [track for track in _itracks if len(track) > 1]
-            # If no tracks are left, remove target ship
-            if not tgt.tracks:
-                logger.debug(
-                    f"Target ship {tgt.mmsi} has no tracks left after filtering."
-                )
-                del targets[tgt.mmsi]
-        logger.info(f"Determined {self._n_split_points} split points.")
-        return targets
-                        
     def _sp_construct_target_vessels(self,
                                      neighbors: pd.DataFrame,
                                      tpos: TimePosition,
@@ -790,7 +718,7 @@ class TargetShipConstructor:
                     ts = tpos.timestamp if tpos is not None else None,
                     mmsi=mmsi,
                     ship_type=self._get_ship_type(self.data_loader.static_data,mmsi,ts),
-                    length=self._get_ship_length(self.data_loader.static_data,mmsi),
+                    ship_length=self._get_ship_length(self.data_loader.static_data,mmsi),
                     tracks=[[msg]]
                 )
             else:
@@ -889,7 +817,7 @@ class TargetShipConstructor:
         if sl.size == 0: return AVGLENGTHS[ship_type][1] # Return median
         return sl[0]
     
-    def print_trex_stats(self) -> str:
+    def print_trex_stats(self, splitter: split.ANY_SPLITTER) -> str:
         """
         Print statistics of the last 
         trajectory extraction.
@@ -898,8 +826,8 @@ class TargetShipConstructor:
             'Number of Raw Messages': self._n_obs_raw,
             'Number of Duplicates': self._n_duplicates,
             'Number of Trajectories': self._n_trajectories,
-            'Number of Split-Points': self._n_split_points,
-            'Number of Rejoined Tracks': self._n_rejoined_tracks,
+            'Number of Split-Points': splitter._n_split_points,
+            'Number of Rejoined Tracks': splitter._n_rejoined_tracks,
         }
         
         # Printout styling

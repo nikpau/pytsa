@@ -1,6 +1,7 @@
 from .logger import logger
 
 from .tsea.search_agent import SearchAgent, TimePosition, TargetShip
+from .tsea.split import TREXMethod
 from .structs import BoundingBox, ShipType
 from .trajectories import Inspector, ExampleRecipe
 from .decoder import decode_from_file, decode

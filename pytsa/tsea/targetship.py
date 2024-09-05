@@ -183,14 +183,19 @@ class TargetShip:
         mmsi: MMSI, 
         tracks: List[List[AISMessage]],
         ship_type: list[int] = None,
-        length: float = None,
+        ship_length: float = None,
         ) -> None:
         
         self.ts = ts
         self.mmsi = mmsi 
         self.tracks = tracks
         self.ship_type = ship_type
-        self.length = length
+        self.ship_length = ship_length
+        
+        # Indicator whether a trajectory extraction
+        # has been applied to the vessel's track
+        self._trex_applied = False 
+        
         self.lininterp = False # Linear interpolation flag
         
         # Indicate if the interpolation function have 
