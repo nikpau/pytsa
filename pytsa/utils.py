@@ -119,7 +119,7 @@ class DataLoader:
     # Fraction of the file to read
     nfrac = 10
 
-    #Engine to use for decoding
+    # Engine to use for decoding (future-proofing)
     ENGINE = "pyarrow"
     
     dynamic_columns = [
@@ -168,7 +168,7 @@ class DataLoader:
         
         # Flag to indicate if the data has
         # been loaded into memory entirely.
-        # Only used for the `load` method.
+        # Only used for the `load_all` method.
         self.loaded = False
     
     @staticmethod
@@ -331,7 +331,9 @@ class DataLoader:
         # Get timezones
         if dates.dt.tz is None:
             dates = dates.dt.tz_localize('UTC')
-        df.iloc[:,timestamp_col] = (dates - pd.Timestamp("1970-01-01",tzinfo=dates.dt.tz)) // pd.Timedelta("1s")
+        df.iloc[:,timestamp_col] = (
+            dates - pd.Timestamp("1970-01-01",tzinfo=dates.dt.tz)
+        ) // pd.Timedelta("1s")
         # Since we only use a subset of the columns, `df` orders
         # its columns according to the order of `col_idxs`. We need
         # to reorder the columns to match the original order of `column_names`.
@@ -468,10 +470,13 @@ class DataLoader:
             stat[[DataLoader.static_columns]]
         )
         
-    def iterate_files(self) -> None:
+    def load_all(self) -> None:
         """
-        Loads all data into memory.
+        Loads all data into memory. 
         """
+        logger.warning(
+            "Loading all data into memory. Depending on the size of the data, this may take a while."
+        )
         self.dynamic_data = pd.DataFrame()
         self.static_data = pd.DataFrame()
         for dyn_path, stat_path in zip(self.sdyn,self.sstat):
@@ -479,7 +484,6 @@ class DataLoader:
             d = pd.read_csv(dyn_path,sep=",",usecols=self.dynamic_columns,engine=DataLoader.ENGINE)
             d = self._dynamic_preprocessor(d)
             s = pd.read_csv(stat_path,sep=",",usecols=self.static_columns,engine=DataLoader.ENGINE)
-            s = self._static_preprocessor(s)
             self.dynamic_data = pd.concat([self.dynamic_data,d])
             self.static_data = pd.concat([self.static_data,s])
         logger.info("Done.")
