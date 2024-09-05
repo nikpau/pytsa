@@ -117,10 +117,9 @@ def plot_reported_vs_calculated_speed(sa:SearchAgent):
     ax: plt.Axes
     speeds = []
     
-    spl = split.Splitter()
     for msg1, msg2 in iter_msg_raw(sa):
-        rspeed = spl.avg_speed(msg1,msg2)
-        cspeed = spl.speed_from_position(msg1,msg2)
+        rspeed = split.avg_speed(msg1,msg2)
+        cspeed = split.speed_from_position(msg1,msg2)
         speeds.append(rspeed - cspeed)
     
     # Boxplot of speeds
