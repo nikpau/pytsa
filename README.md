@@ -1,5 +1,7 @@
 # Python Trajectory Search Agent (PyTSA) for raw AIS records
 
+### Accompanying implementation of our _Ocean Engineering_ publication: [An open-source framework for data-driven trajectory extraction from AIS data — The α-method](https://doi.org/10.1016/j.oceaneng.2024.119092)
+
 This module provides a set of functionalities around Automatic Identification System (AIS) messages, such as
 
 - Decoding raw AIS messages
@@ -21,8 +23,8 @@ Install the package via pip:
 $ pip install pytsa-ais
 ```
 
-## Usage
-### Raw AIS data
+# Usage
+## Raw AIS data
 One file of raw AIS records must only contain dynamic AIS messages (Types 1,2,3 and 18) or static AIS messages (Type 5). A combination of both is not supported. The data must be provided in the `.csv` format and *must be named YYYY_MM_DD.csv*. Other file names are not supported.
 > This is done to avoid extra-day sorting of the data, which would be necessary if the data was not sorted by date. Intra-day sorting is done regardless of the file name.
 
@@ -40,19 +42,19 @@ For static AIS messages (Type 5) additionally:
 - _raw_message1_: First AIVDM sentence
 - _raw_message2_: Second AIVDM sentence
 
-#### Example Table for dynamic AIS messages
+### Example Table for dynamic AIS messages
 | timestamp | message_id | raw_message |
 |-----------|---------|-------------|
 | 2021-07-03T00:00:00.000Z | 1 | "!ABVDM,1,1,,B,177PhT001iPWhwJPsK=9DoQH0<>i,0*7C"
 
-#### Example Table for static AIS messages
+### Example Table for static AIS messages
 | timestamp | message_id | raw_message1 | raw_message2 |
 |-----------|---------|-------------|-------------|
 | 2021-07-03T00:00:00.000Z | 5 | "!ABVDM,2,1,5,A,53aQ5aD2;PAQ0@8l000lE9LD8u8L00000000001??H<886?80@@C1F0CQ4R@,0*35" | "!ABVDM,2,2,5,A,@0000000000,2*5A"
 
 For more information on the AIS message structure, see [here](https://gpsd.gitlab.io/gpsd/AIVDM.html).
 
-#### Decoding AIS messages
+### Decoding AIS messages
 
 Once your raw AIS data is in the correct format, you can decode the AIS messages by calling the `decode()` function. The function takes as arguments the path to a directory containing the raw AIS data, as well as the path to the output directory. The function will then decode all `.csv` files in the input directory and save the decoded data to the output directory under the same file name.
 
@@ -113,7 +115,7 @@ search_agent = pytsa.SearchAgent(
     frame = frame
 )
 ```
-### Monitoring vessel traffic around a given position
+## Monitoring vessel traffic around a given position
 
 To commence a search for ships around a given location, it is mandatory to use a `TimePosition` object to store the position and time at which the search shall be commenced simultaneously. Example:
 
@@ -160,7 +162,7 @@ for ship in target_ships:
 >>> np.array([52.232,9.847,12.34,223.4])
 ```
 
-### Full example
+## Full example
 ```py
 import pytsa
 from pathlib import Path
@@ -208,22 +210,32 @@ for ship in target_ships:
 # Example output for one ship
 >>> np.array([52.232,9.847,12.34,223.4])
 ```
-### Extracting trajectories 
+# Extracting trajectories 
 
-If instead of observing target ships around a given position, you want to extract trajectories from the data, you can use the `SearchAgent.extract_all()`.
+If instead of observing target ships around a given position, you want to extract trajectories from the data, you can use the `SearchAgent.extract_all()` method.
 
-By default, the `extract_all()` method walks through the entire dataset and extracts all trajectories that are within the search area utilizing the split-point approach from Section 4 in our original paper. The method returns a dictionary with the MMSI as keys and the corresponding `TargetShip` objects as values.
+By default, the `extract_all()` method walks through the entire dataset and extracts all trajectories that are within the search area utilizing the split-point approach from Section 6 in our original paper. The method returns a dictionary with the MMSI as keys and the corresponding `TargetShip` objects as values. The default signature looks like this
     
 ```py
-all_ships = search_agent.extract_all()
+from pytsa import TREXMethod
+all_ships = search_agent.extract_all(
+    method = TREXMethod.PAULIG,
+    njobs = 4,
+    skip_tsplit = False,
+    **skwargs
+)
 ```
+Changing the `method` allows you to switch between the trajectory extraction procecees of [Paulig and Okhrin (2024)](https://doi.org/10.1016/j.oceaneng.2024.119092) (Ours), [Zhao et al. (2018)](https://doi.org/10.1017/S0373463318000188) or [Guo at al. (2021)](https://doi.org/10.1016/j.oceaneng.2021.109256). The methods of _Paulig_ and _Guo_ feature additional keyword arguments (skwargs) to control the trajectory extraction process:
 
-To skip the split-point approach you can set the `skip_tsplit` parameter to `True`. This will result in TargetShip objects that only contain a single trajectory, which is the raw, time-ordered set of AIS messages for the given MMSI. 
+| Method   | Keyword(s)   |
+|------------|------------|
+| _Paulig and Okhrin (2024)_ | _alpha_ (default = 0.05): <br>    cutoff quantile for the empirical distribution functions (refer to Section 6)|
+| _Guo et al. (2021)_ | _vlim_ (default = 30): <br>    cutoff value for changes in speed in knots for two consectutive messages be counted to the same trajectory|
+| -| _clim_ (default 2): <br>    cutoff value for chanes in heading in degrees for two consectutive messages be counted to the same trajectory|
 
-```py
-all_ships = search_agent.extract_all(skip_tsplit=True)
-```
-> The `extract_all()` method used 4-core parallel processing by default. This can be adjusted by setting the `njobs` parameter to a custom value. Note, that high `njobs` values may lead to a slowdown due to the overhead of splitting the data into chunks and reassembling the results.
+To skip the split-point approach entirely you can set the `skip_tsplit` parameter to `True`. This will result in TargetShip objects that only contain a single trajectory, which is the raw, time-ordered set of AIS messages for the given MMSI. 
+
+The `extract_all()` method used 4-core parallel processing by default. This can be adjusted by setting the `njobs` parameter to a custom value. Note, that high `njobs` values may lead to a slowdown due to the overhead of splitting the data into chunks and reassembling the results. Keep [Amdahl's law](https://en.wikipedia.org/wiki/Amdahl%27s_law) in mind.
 
 The trajectories of each `TargetShip` object can be accessed by the `tracks` attribute, which is of type `list[Track]`. Each `Track` within the `tracks` list contains the AIS messages for a single trajectory. 
 See the `pytsa.structs.AISMessage` module for more information on the fields of the AIS messages.
@@ -244,7 +256,7 @@ for ship in all_ships.values():
 ```
 Refer also to the function documentation for further details.
 
-#### Refining trajectories using the `Inspector` class
+### Refining trajectories using the `Inspector` class
 
 Once the `TargetShips` with its trajectories are extracted, PyTSA provides a flexible interface for refining the trajectories using the `Inspector` class. The output of the Inspector is two dictionaries [_accepted_,_rejected_], of type `dict[MMSI,TargetShip]`. The first dictionary contains the TargetShip objects that passed the inspection, while the second dictionary contains the TargetShip objects that failed the inspection.
 > Note: It is possible that the same MMSI is present in both dictionaries. If so, the TargetShip object in the _rejected_ dictionary will contain only rejected trajectories, while the TargetShip object in the _accepted_ dictionary will contain only accepted trajectories.
@@ -253,7 +265,7 @@ The `Inspector` works with a set of _rules_, that must be combined into a `Recip
 
 Before we show an example, let's explain the concept of _rules_ and _recipes_:
 
-##### Rules
+#### Rules
 
 A _rule_ is a function following the signature `rule(track: Track) -> bool`. It takes a single `Track` object as input and returns a boolean value. _Rules_ are set to act as a negative filter, meaning that if a _rule_ returns _True_, the corresponding `Track` will be _removed_ from the `TargetShip` object.
 > It is possible for rules to have more than one argument, like `rule(track: Track, *args, **kwargs) -> bool`, however, for constructing a recipe, all other arguments must be pre-set, for example by using a lambda function, or the `functools.partial` function.
@@ -275,7 +287,7 @@ def lat_outside_bounds(track: Track, latmin: float, latmax: float) -> bool:
 
 Feel free to define your own rules, or use the ones provided in the `pytsa.trajectories.rules` module.
 
-##### Recipes
+#### Recipes
 
 A _recipe_ is a list of _rules_ that are combined into a single function using the `Recipe` class.
 
@@ -290,7 +302,7 @@ recipe = Recipe(
     partial(lat_outside_bounds, latmin=52.2, latmax=56.9)
 )
 ```
-#### Applying the recipe to the `Inspector`
+### Applying the recipe to the `Inspector`
 
 Once the recipe is created, it can be passed to the `Inspector` object, which will then apply the recipe to the `TargetShip` objects, filtering out the trajectories that do not pass the rules.
 
@@ -301,7 +313,7 @@ inspector = Inspector(all_ships, recipe)
 accepted, rejected = inspector.inspect()
 ```
 
-## Visualizing AIS data
+# Visualizing AIS data
 
 This module provides various functions for visualizing AIS data. Currently, there exist two groups of functions:
 
@@ -314,13 +326,14 @@ This module provides various functions for visualizing AIS data. Currently, ther
     - Plotting all trajectories as a heatmap
     - Generating a pixel map of average smoothness as a function of the number of messages in a trajectory and the spatial standard deviation of the trajectory (Figure 14 in the paper)
 
-## Issues and Contributing
+# Issues and Contributing
 
-Currently, this project is developed by a single person and is therefore not thoroughly tested.
+This project is actively maintained by the author of the paper. If you have suggestions, feature requests, or find any bugs, feel free to open an issue on this repository. 
+Contributions and feedback are always welcome!
 
 If you encounter any issues or have any suggestions for improvements, you are invited to open an issue or a pull request.
 
-## Citation
+# Citation
 
 If you use this module in your research, please consider citing this repository as follows:
 
@@ -335,9 +348,9 @@ If you use this module in your research, please consider citing this repository 
 }
 ```
 
-## Appendix
+# Appendix
 
-### Split-point procedure
+## Split-point procedure
 
 The split-point procedure takes place in the `pytsa.tsea.split` module. Its main function, `is_split_point()`, will be called on every pair of AIS messages in the dataset. The function returns a boolean value, indicating whether the pair of messages is a split point or not. 
 
