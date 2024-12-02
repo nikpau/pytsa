@@ -31,7 +31,7 @@ fn haversine(lon1: f64, lat1: f64, lon2: f64, lat2: f64, miles: Option<bool>) ->
 }
 
 #[pymodule]
-fn _pytsa_compiled(py: Python, m: &PyModule) -> PyResult<()> {
+fn _pytsa_compiled(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(haversine, m)?)?;
     Ok(())
 }
