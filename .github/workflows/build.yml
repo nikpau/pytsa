@@ -104,7 +104,7 @@ jobs:
             target: ${{ matrix.target }}
             manylinux: ${{ matrix.manylinux }}
             args: --release --interpreter ${{ matrix.interpreter || '3.10 3.11 3.12 3.13' }}
-            rust-toolchain: stable
+            rust-toolchain: ${{ (matrix.os == 'windows' && '1.77') || 'stable' }}
             docker-options: -e CI
 
         - name: Upload Wheels
