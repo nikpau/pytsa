@@ -57,12 +57,12 @@ jobs:
           with:
             toolchain: stable
             profile: minimal
-        - name: Install maturin
-          run: |
-            /opt/python/cp${{ matrix.python-version }}*/bin/pip* install maturin
-  
-        - name: Build with Maturin
-          run: /opt/python/cp${{ matrix.python-version }}*/bin/maturin build
+
+        - name: Set up Maturin
+          uses: PyO3/maturin-action@v1
+          with:
+            command: build
+            args: --release
   
         - name: Upload Wheels
           uses: actions/upload-artifact@v3
