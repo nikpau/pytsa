@@ -3,85 +3,146 @@ name: Build and Publish
 on: [push, pull_request]
 
 jobs:
+    # build:
+    #   runs-on: ${{ matrix.os }}
+    #   strategy:
+    #     matrix:
+    #       python-version: ["3.10","3.11", "3.12", "3.13"]
+    #       os: [ubuntu-latest, macos-latest, windows-latest]
+    #   steps:
+    #     - uses: actions/checkout@v4
+    #     - name: Set up Python ${{ matrix.python-version }}
+    #       uses: actions/setup-python@v5
+    #       with:
+    #         python-version: ${{ matrix.python-version }}
+    #     - name: Set up dependencies on macOS
+    #       if: runner.os == 'macOS'
+    #       run: |
+    #         brew install openssl
+    #     - name: Set up dependencies on Windows
+    #       if: runner.os == 'Windows'
+    #       run: |
+    #         choco install openssl
+    #         powershell -Command "Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1; refreshenv"
+    #     - name: Install Rust
+    #       uses: actions-rs/toolchain@v1
+    #       with:
+    #         toolchain: stable
+    #         profile: minimal
+    #     - name: Install Maturin
+    #       run: pip install maturin
+    #     - name: Build with Maturin
+    #       run: maturin build
+    #     - name: Upload Wheels
+    #       uses: actions/upload-artifact@v3
+    #       with:
+    #         name: wheels
+    #         path: target/wheels/
     build:
-      runs-on: ${{ matrix.os }}
+      name: build on ${{ matrix.os }} (${{ matrix.target }} - ${{ matrix.interpreter || 'all' }}${{ matrix.os == 'linux' && format(' - {0}', matrix.manylinux == 'auto' && 'manylinux' || matrix.manylinux) || '' }})
+      # only run on push to main and on release
       strategy:
+        fail-fast: false
         matrix:
-          python-version: ["3.10","3.11", "3.12", "3.13"]
-          os: [ubuntu-latest, macos-latest, windows-latest]
+          os: [linux, macos, windows]
+          target: [x86_64, aarch64]
+          manylinux: [auto]
+          include:
+            # manylinux for various platforms
+            - os: linux
+              manylinux: auto
+              target: i686
+            - os: linux
+              manylinux: auto
+              target: aarch64
+            - os: linux
+              manylinux: auto
+              target: armv7
+              interpreter: 3.10 3.11 3.12 3.13
+            - os: linux
+              manylinux: auto
+              target: ppc64le
+              interpreter: 3.10 3.11 3.12 3.13
+            - os: linux
+              manylinux: auto
+              target: s390x
+              interpreter: 3.10 3.11 3.12 3.13
+  
+            # musllinux
+            - os: linux
+              manylinux: musllinux_1_1
+              target: x86_64
+            - os: linux
+              manylinux: musllinux_1_1
+              target: aarch64
+            - os: linux
+              manylinux: musllinux_1_1
+              target: armv7
+
+            # windows;
+            # aarch64 only 3.11 and up
+            - os: windows
+              target: i686
+              python-architecture: x86
+              interpreter: 3.10 3.11 3.12 3.13
+            - os: windows
+              target: aarch64
+              interpreter: 3.11 3.12 3.13
+  
+          exclude:
+            # See above; disabled for now.
+            - os: windows
+              target: aarch64
+  
+      runs-on: ${{ (matrix.os == 'linux' && 'ubuntu') || matrix.os }}-latest
       steps:
         - uses: actions/checkout@v4
-        - name: Set up Python ${{ matrix.python-version }}
-          uses: actions/setup-python@v5
-          with:
-            python-version: ${{ matrix.python-version }}
-        - name: Set up dependencies on macOS
-          if: runner.os == 'macOS'
-          run: |
-            brew install openssl
-        - name: Set up dependencies on Windows
-          if: runner.os == 'Windows'
-          run: |
-            choco install openssl
-            powershell -Command "Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1; refreshenv"
-        - name: Install Rust
-          uses: actions-rs/toolchain@v1
-          with:
-            toolchain: stable
-            profile: minimal
-        - name: Install Maturin
-          run: pip install maturin
-        - name: Build with Maturin
-          run: maturin build
-        - name: Upload Wheels
-          uses: actions/upload-artifact@v3
-          with:
-            name: wheels
-            path: target/wheels/
-
-    manylinux-build:
-      runs-on: ubuntu-latest
-      strategy:
-        matrix:
-          python-version: ["310", "311", "312", "313"]
-          manylinux: [manylinux]
   
-      steps:
-        - uses: actions/checkout@v4
-  
-        - name: Set up dependencies on manylinux
-          run: |
-            yum install -y openssl
-        - name: Install Rust
-          uses: actions-rs/toolchain@v1
-          with:
-            toolchain: stable
-            profile: minimal
-
-        - name: Set up Maturin
+        - name: build wheels
           uses: PyO3/maturin-action@v1
           with:
-            command: build
-            args: --release
-  
+            target: ${{ matrix.target }}
+            manylinux: ${{ matrix.manylinux }}
+            args: --release --interpreter ${{ matrix.interpreter || '3.10 3.11 3.12 3.13' }}
+            rust-toolchain: stable
+            docker-options: -e CI
+
         - name: Upload Wheels
           uses: actions/upload-artifact@v3
           with:
             name: wheels
             path: target/wheels/
-  
-      container:
-        image: ${{ matrix.manylinux == 'manylinux' && 'quay.io/pypa/manylinux_2_28_x86_64'}}
-        options: --user 0:0  # ensure the container runs as a root user
+    # manylinux-build:
+    #   runs-on: ubuntu-latest
+      # container:
+      #   image: quay.io/pypa/manylinux_2_28_x86_64
+      #   options: --user 0:0
+      # strategy:
+      #   matrix:
+      #     python-version: ["3.10", "3.11", "3.12", "3.13"]
       
+      # steps:
+      #   - uses: actions/checkout@v4
+      #   - name: Build wheels
+      #     uses: PyO3/maturin-action@v1
+      #     with:
+      #       args: --release --interpreter python${{ matrix.python-version }}
+      #       manylinux: auto
+      #       rust-toolchain: stable
 
+        # - name: Upload Wheels
+        #   uses: actions/upload-artifact@v3
+        #   with:
+        #     name: wheels
+        #     path: target/wheels/
+
+          
     publish-to-pypi:
       name: >-
           Publish to PyPI
       if: startsWith(github.ref, 'refs/tags/')  # only publish to PyPI on tag pushes
       needs:
       - build
-      - manylinux-build
       runs-on: ubuntu-latest
       environment:
         name: pypi
