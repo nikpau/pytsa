@@ -89,14 +89,15 @@ jobs:
               target: aarch64
               interpreter: 3.11 3.12 3.13
   
-          exclude:
-            # See above; disabled for now.
-            - os: windows
-              target: aarch64
-  
       runs-on: ${{ (matrix.os == 'linux' && 'ubuntu') || matrix.os }}-latest
       steps:
         - uses: actions/checkout@v4
+
+        - name: Set up Python
+          uses: actions/setup-python@v5
+          with:
+            python-version: ${{ matrix.interpreter }}
+            architecture: ${{ matrix.python-architecture || 'x64' }}
   
         - name: build wheels
           uses: PyO3/maturin-action@v1
