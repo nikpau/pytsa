@@ -96,7 +96,7 @@ jobs:
         - name: Set up Python
           uses: actions/setup-python@v5
           with:
-            python-version: ${{ matrix.interpreter }}
+            python-version: "3.13"
             architecture: ${{ matrix.python-architecture || 'x64' }}
   
         - name: build wheels
