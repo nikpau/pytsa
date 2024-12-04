@@ -3,41 +3,6 @@ name: Build and Publish
 on: [push, pull_request]
 
 jobs:
-    # build:
-    #   runs-on: ${{ matrix.os }}
-    #   strategy:
-    #     matrix:
-    #       python-version: ["3.10","3.11", "3.12", "3.13"]
-    #       os: [ubuntu-latest, macos-latest, windows-latest]
-    #   steps:
-    #     - uses: actions/checkout@v4
-    #     - name: Set up Python ${{ matrix.python-version }}
-    #       uses: actions/setup-python@v5
-    #       with:
-    #         python-version: ${{ matrix.python-version }}
-    #     - name: Set up dependencies on macOS
-    #       if: runner.os == 'macOS'
-    #       run: |
-    #         brew install openssl
-    #     - name: Set up dependencies on Windows
-    #       if: runner.os == 'Windows'
-    #       run: |
-    #         choco install openssl
-    #         powershell -Command "Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1; refreshenv"
-    #     - name: Install Rust
-    #       uses: actions-rs/toolchain@v1
-    #       with:
-    #         toolchain: stable
-    #         profile: minimal
-    #     - name: Install Maturin
-    #       run: pip install maturin
-    #     - name: Build with Maturin
-    #       run: maturin build
-    #     - name: Upload Wheels
-    #       uses: actions/upload-artifact@v3
-    #       with:
-    #         name: wheels
-    #         path: target/wheels/
     build:
       name: build on ${{ matrix.os }} (${{ matrix.target }} - ${{ matrix.interpreter || 'all' }}${{ matrix.os == 'linux' && format(' - {0}', matrix.manylinux == 'auto' && 'manylinux' || matrix.manylinux) || '' }})
       # only run on push to main and on release
@@ -80,14 +45,11 @@ jobs:
               target: armv7
 
             # windows;
-            # aarch64 only 3.11 and up
+            # aarch64 is not supported on windows
             - os: windows
               target: i686
               python-architecture: x86
               interpreter: 3.10 3.11 3.12 3.13
-            - os: windows
-              target: aarch64
-              interpreter: 3.11 3.12 3.13
   
       runs-on: ${{ (matrix.os == 'linux' && 'ubuntu') || matrix.os }}-latest
       steps:
@@ -113,30 +75,6 @@ jobs:
           with:
             name: wheels
             path: target/wheels/
-    # manylinux-build:
-    #   runs-on: ubuntu-latest
-      # container:
-      #   image: quay.io/pypa/manylinux_2_28_x86_64
-      #   options: --user 0:0
-      # strategy:
-      #   matrix:
-      #     python-version: ["3.10", "3.11", "3.12", "3.13"]
-      
-      # steps:
-      #   - uses: actions/checkout@v4
-      #   - name: Build wheels
-      #     uses: PyO3/maturin-action@v1
-      #     with:
-      #       args: --release --interpreter python${{ matrix.python-version }}
-      #       manylinux: auto
-      #       rust-toolchain: stable
-
-        # - name: Upload Wheels
-        #   uses: actions/upload-artifact@v3
-        #   with:
-        #     name: wheels
-        #     path: target/wheels/
-
           
     publish-to-pypi:
       name: >-
