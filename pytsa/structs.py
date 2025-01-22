@@ -233,7 +233,8 @@ class TimePosition(Position):
             return self.timestamp
         try:
             return ciso8601.parse_datetime(self.timestamp)
-        except ValueError:
+        # Will be a type error if type(self.timestamp) != str
+        except (ValueError,TypeError):
             try: # Try to parse as UNIX timestamp
                 return datetime.fromtimestamp(self.timestamp)
             except:
