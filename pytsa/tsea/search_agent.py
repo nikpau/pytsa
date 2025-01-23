@@ -7,8 +7,8 @@ import multiprocessing as mp
 
 from copy import copy
 from pathlib import Path
+from warnings import deprecated
 from scipy.spatial import cKDTree
-from more_itertools import pairwise
 from typing import Callable, Generator, List, Sequence, Union
 
 from . import split
@@ -24,6 +24,11 @@ from .targetship import (
 from ..utils import DataLoader, DateRange
 from ..decoder.filedescriptor import (
     BaseColumns, Msg12318Columns, Msg5Columns
+)
+
+_extract_all_deprecated = (
+    "Due to a naming convention change, the method `extract_all` "
+    "has been deprecated. Please use `extract_trajectories` instead."
 )
 
 # Not all ships always report thier static voyage report
@@ -330,11 +335,20 @@ class SearchAgent:
         tgts = self._interpolate_trajectories(tgts,mode=interpolation)
         return tgts
     
-    def extract_all(self,
-                    method: split.TREXMethod = split.TREXMethod.PAULIG,
-                    njobs: int = 4, 
-                    skip_tsplit: bool = False,
-                    **skwargs) -> Targets:
+    @deprecated(_extract_all_deprecated)
+    def extract_all(self,*args,**kwargs) -> Targets:
+        """
+        Backwards compatibility for naming convention.
+        """
+        return self.extract_trajectories(*args,**kwargs)
+    
+    def extract_trajectories(
+        self,
+        method: split.TREXMethod = split.TREXMethod.PAULIG,
+        njobs: int = 4, 
+        skip_tsplit: bool = False,
+        **skwargs
+        ) -> Targets:
         """
         Extracts a dictionary of all target ships in the
         frame of the search agent using the split-point
