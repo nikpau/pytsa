@@ -628,10 +628,18 @@ class TargetShipConstructor:
         
         logger.info("Removing duplicates...")
         targets = self._remove_duplicates(targets)
+
         if not skip_tsplit:
             logger.info("Splitting tracks...")
             for target in targets.values():
                 self.splitter.trex(target)
+
+        logger.info("Removing single observation tracks...")
+        # If removing single observation tracks leads to a target
+        # ship having no tracks, remove it.
+        no_data = self._remove_single_obs(targets)
+        for MMSI in no_data:
+            targets.pop(MMSI)
             
         self._n_trajectories = sum([len(tgt.tracks) for tgt in targets.values()])
         return targets
@@ -745,8 +753,11 @@ class TargetShipConstructor:
         for tgt in targets.values():
             tgt.find_shell() # Find shell (start/end of traj) of target ship
         
-        # Remove target ships with only one observation
-        self._remove_single_obs(targets)
+        # Remove target ships with only one observation.
+        # If this leads to the ship having no tracks, remove it.
+        no_data = self._remove_single_obs(targets)
+        for MMSI in no_data:
+            targets.pop(MMSI)
         
         if overlap:
             self._filter_overlapping(targets,tpos)
@@ -767,16 +778,20 @@ class TargetShipConstructor:
                     to_keep.append(track)
             tgt.tracks = to_keep
 
-    def _remove_single_obs(self, targets: Targets) -> Targets:
+    def _remove_single_obs(self, targets: Targets) -> tuple[str]:
         """
         Remove tracks that only have a single observation.
         """
+        no_tracks = []
         for tgt in targets.values():
             to_keep = []
             for track in tgt.tracks:
                 if len(track) >= 2:
                     to_keep.append(track)
             tgt.tracks = to_keep
+            if not tgt.tracks:
+                no_tracks.append(tgt.mmsi)
+        return tuple(no_tracks)
     
     def _overlaps_search_date(self, 
                               track: Track, 
