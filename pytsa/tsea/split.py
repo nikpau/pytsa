@@ -359,16 +359,17 @@ class PauligTREX(_TREXStatCollector):
                     _itracks[-1].append(msg_t1)
         # Recombine tracks
         tracks = [track for track in _itracks if len(track) > 1]
-        # If no tracks are left, return an empty list
+
+        ship.tracks = tracks
+        ship._trex_applied = True
+
+        # Early exit if no tracks are left
         if not tracks:
             logger.debug(
                 f"Target ship {ship.mmsi} has no tracks left after filtering."
             )
-            return [[]]
-        
-        ship.tracks = tracks
-        ship._trex_applied = True
-        return self._rejoin_tracks(ship)
+            return
+        else: return self._rejoin_tracks(ship)
 
     def _rejoin_tracks(self, target: TargetShip) -> None:
         """
