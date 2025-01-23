@@ -451,6 +451,7 @@ class TargetShipConstructor:
         self._n_duplicates = 0
         self._n_obs_raw = 0
         self._n_trajectories = 0
+        self._n_single_obs = 0
 
     def _impl_construct_target_vessel(self, 
                                       dyn: pd.DataFrame,
@@ -788,6 +789,7 @@ class TargetShipConstructor:
             for track in tgt.tracks:
                 if len(track) >= 2:
                     to_keep.append(track)
+                else: self._n_single_obs += 1
             tgt.tracks = to_keep
             if not tgt.tracks:
                 no_tracks.append(tgt.mmsi)
@@ -852,11 +854,12 @@ class TargetShipConstructor:
         trajectory extraction.
         """
         metrics = {
-            'Number of Raw Messages': self._n_obs_raw,
-            'Number of Duplicates': self._n_duplicates,
-            'Number of Trajectories': self._n_trajectories,
-            'Number of Split-Points': splitter._n_split_points,
-            'Number of Rejoined Tracks': splitter._n_rejoined_tracks,
+            'Raw Messages': self._n_obs_raw,
+            'Duplicates': self._n_duplicates,
+            'Trajectories': self._n_trajectories,
+            'Split-Points': splitter._n_split_points,
+            'Rejoined Tracks': splitter._n_rejoined_tracks,
+            'Single Observation Tracks': self._n_single_obs
         }
         
         # Printout styling
@@ -873,9 +876,20 @@ class TargetShipConstructor:
 
         # Iterating over the metrics to print each one
         for metric, value in metrics.items():
+            value = f"{value:_}"
             logger.info(f"{metric:<30}{value:>20}")
 
         logger.info(separator)
+        if self._n_single_obs > 0:
+            logger.warning(
+                """
+                Some target ships were left with single-observation tracks 
+                after trajectory extraction. This is discouraged, as one 
+                observation may not comprise a meaningful trajectory. 
+                Please check your extraction pipeline. If this behavior is 
+                intended, you can ignore this warning.
+                """
+            )
         
     def reset_stats(self) -> None:
         """
@@ -886,5 +900,6 @@ class TargetShipConstructor:
         self._n_duplicates = 0
         self._n_obs_raw = 0
         self._n_trajectories = 0
+        self._n_single_obs = 0
         logger.debug("Trajectory extraction statistics reset.")
         return None
