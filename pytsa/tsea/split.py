@@ -373,35 +373,25 @@ class PauligTREX(_TREXStatCollector):
 
     def _rejoin_tracks(self, target: TargetShip) -> None:
         """
-        During the application of the split-point method,
-        we split a trajectory into multiple tracks if two 
-        consecutive AIS messages do not fall into the 
-        95th percentile bounds of the defined metrics 
-        in the paper.
-        
-        In case of a single erroneous AIS message, the
-        split-point method will split the trajectory into
-        a first part containing everything before the
-        erroneous message, a second part containing only
-        the erroneous message and a third part containing
-        everything after the erroneous message. If the 
-        erroneous part in the middle has only one or two 
-        AIS messages, it is removed, leaving us with two 
-        separate tracks.
-        
-        This leads to a situation where a single erroneous
-        message can lead to the creation of two or three 
-        separate tracks, of which the first and the last 
-        logically belong together.
-        
-        This function determines whether the last AIS message
-        of the first track and the first AIS message of the
-        second track are close enough to be considered as
-        part of the same track. If so, the two tracks are
-        joined together.
-        
-        Judgment is based on the same split-point metrics
-        as used for the initial split.
+        We use the split-point method to break a ship's
+        trajectory into multiple tracks whenever two 
+        consecutive AIS messages exceed the 95th percentile 
+        limits of our metrics. In case of an outlier, the 
+        method may initially split the trajectory into three 
+        parts: everything before the outlier, the outlier 
+        itself, and everything after it. If the middle 
+        section consists of only one or two AIS messages, 
+        we discard it as erroneous, which results in just 
+        two tracks.
+
+        However, this can lead to cases where a single 
+        outlier message creates multiple tracks that should 
+        logically be part of one continuous path. To fix 
+        this, we check whether the last AIS message of the 
+        first track and the first AIS message of the second 
+        track remain within the 95th percentile bounds of 
+        the same metrics. If they are close enough, we merge 
+        the two tracks back into one.
         """
         rejoined = []
         for i, track in enumerate(target.tracks):
