@@ -282,6 +282,14 @@ class SearchAgent:
         # Number of times, the _position_correction function
         # was called
         self._n_position_correction = 0
+
+        # This attribute will be filled if the "extract_trajectories"
+        # method is called. It will hold the selected TREX method, 
+        # and its parameters. We do this to ensure, that the 
+        # trajectories constructed by the "freeze" method are
+        # the same as the ones used for the split-point method.
+        self._default_splitter = split.TREXMethod.PAULIG
+        self._selected_splitter: split.TREXMethod = None
         
     def _sanitize_input_paths(self, input_paths: SaInputPaths) -> List[Path]:
         """
@@ -303,7 +311,8 @@ class SearchAgent:
     def freeze(self, 
                tpos: TimePosition, 
                search_radius: float = 20, # in nautical miles
-               interpolation: str = "linear") -> Targets:
+               interpolation: str = "linear",
+               **skwargs) -> Targets:
         """
         Freeze around a given position and time and return 
         a list of target ships present in the neighborhood 
@@ -328,7 +337,8 @@ class SearchAgent:
 
         constructor = TargetShipConstructor(
             self.data_loader,
-            split.PauligTREX(0.05) # Placeholder
+            self._selected_splitter or self._default_splitter,
+            **skwargs
         )
         tgts = constructor._sp_construct_target_vessels(neighbors,tpos,True)
         # Contruct Splines for all target ships
@@ -375,21 +385,23 @@ class SearchAgent:
         --------
         dict: A dictionary of dict[MMSI,TargetShip]. 
         """
+        self._selected_splitter = method
         arginfo = "default args" if not skwargs else f"args: {skwargs}"
         loggercall = logger.warning if not skwargs else logger.info
-        spl = method.value(**skwargs)
         loggercall(
-            "Using split-point method: " + spl.__class__.NAME + f" with {arginfo}."
+            "Using split-point method: " + 
+            self._selected_splitter.value.NAME + f" with {arginfo}."
         )
         constructor = TargetShipConstructor(
             self.data_loader,
-            spl
+            self._selected_splitter,
+            **skwargs
         )
         targets = constructor._mp_construct_target_vessels(
             njobs,skip_tsplit
         )
-        constructor.print_trex_stats(spl)
-        split.print_split_stats(spl)
+        constructor.print_trex_stats(self._selected_splitter.value(**skwargs))
+        split.print_split_stats(self._selected_splitter.value(**skwargs))
         
         # Reset data loader since the generators
         # are exhausted.
@@ -437,13 +449,14 @@ class TargetShipConstructor:
     """
     def __init__(self, 
                  data_loader: DataLoader,
-                 splitter: split.ANY_SPLITTER) -> None:
+                 splitter: split.TREXMethod,
+                 **skwargs) -> None:
         
         self.data_loader = data_loader
-        
-        assert isinstance(splitter,split.ANY_SPLITTER), \
-            "Splitter must be one of the split-point classes."
-        self.splitter = splitter
+               
+        assert splitter in (m for m in split.TREXMethod), \
+            f"Splitter must be of 'TREXMethod' enum. Got {splitter}"
+        self.splitter = splitter.value(**skwargs)
         
         # Statistics
         self._n_split_points = 0
