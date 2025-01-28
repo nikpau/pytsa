@@ -170,8 +170,8 @@ class NeighborhoodTreeSearch:
         date = pd.to_datetime(int(date),unit="s",origin="unix")
         dt = pd.Timedelta(delta, unit="minutes")
         mask = (
-            (df[BaseColumns.TIMESTAMP.value] > (date-dt).timestamp()) & 
-            (df[BaseColumns.TIMESTAMP.value] < (date+dt).timestamp())
+            (df[BaseColumns.TIMESTAMP.value].astype("int64")//10**9 > (date-dt).timestamp()) & 
+            (df[BaseColumns.TIMESTAMP.value].astype("int64")//10**9 < (date+dt).timestamp())
         )
         return df.loc[mask]
 
