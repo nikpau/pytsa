@@ -728,20 +728,22 @@ class TargetShipConstructor:
                 lat=lat,lon=lon,
                 COG=cog,SOG=sog,
                 second=secs
-                
             )
             
             if mmsi not in targets:
+                ship_type = self._get_ship_type(self.data_loader.static_data,mmsi,ts)
+                ship_length = self._get_ship_length(self.data_loader.static_data,mmsi,ship_type)
                 targets[mmsi] = TargetShip(
                     ts = tpos.timestamp if tpos is not None else None,
                     mmsi=mmsi,
-                    ship_type=self._get_ship_type(self.data_loader.static_data,mmsi,ts),
-                    ship_length=self._get_ship_length(self.data_loader.static_data,mmsi),
+                    ship_type = ship_type,
+                    ship_length = ship_length,
                     tracks=[[msg]]
                 )
             else:
                 # Split track
-                if self.splitter.is_split_point(targets[mmsi].tracks[-1][-1],msg):
+                if self.splitter.is_split_point(
+                    targets[mmsi].tracks[-1][-1],msg,targets[mmsi].ship_length):
                     targets[mmsi].tracks.append([])
                 v = targets[mmsi]
                 v.tracks[-1].append(msg)
@@ -769,11 +771,10 @@ class TargetShipConstructor:
                     to_keep.append(track)
             tgt.tracks = to_keep
 
-    def _remove_single_obs(self, targets: Targets) -> tuple[str]:
+    def _remove_single_obs(self, targets: Targets) -> None:
         """
         Remove tracks that only have a single observation.
         """
-        no_tracks = []
         for tgt in targets.values():
             to_keep = []
             for track in tgt.tracks:
@@ -781,9 +782,16 @@ class TargetShipConstructor:
                     to_keep.append(track)
                 else: self._n_single_obs += 1
             tgt.tracks = to_keep
+        return 
+    
+    def _remove_empty(self, targets: Targets) -> None:
+        empty = []
+        for tgt in targets.values():
             if not tgt.tracks:
-                no_tracks.append(tgt.mmsi)
-        return tuple(no_tracks)
+                empty.append(tgt.mmsi)
+        for mmsi in empty:
+            targets.pop(mmsi)
+        return None
     
     def _overlaps_search_date(self, 
                               track: Track, 
