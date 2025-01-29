@@ -7,7 +7,11 @@ import multiprocessing as mp
 
 from copy import copy
 from pathlib import Path
-from warnings import deprecated
+try:
+    from warnings import deprecated
+except ImportError:
+    from typing_extensions import deprecated
+    
 from scipy.spatial import cKDTree
 from typing import Callable, Generator, List, Sequence, Union
 
