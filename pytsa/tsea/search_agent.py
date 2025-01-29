@@ -30,14 +30,16 @@ _extract_all_deprecated = (
     "Due to a naming convention change, the method `extract_all` "
     "has been deprecated. Please use `extract_trajectories` instead."
 )
+# Not all ships consistently report their static 
+# voyage data on time; sometimes, they fail to 
+# report it all together. Since our approach relies 
+# on a ship's length as a proxy for maneuverability, 
+# it is essential to estimate a ship's length when 
+# it is not provided. To address this, we computed 
+# the average and median lengths for all ship types 
+# and used these values as fallback estimates when 
+# length data is unavailable.
 
-# Not all ships always report thier static voyage report
-# in time or not at all. Since our apporach is based on
-# the length of the ship as a maneuvering proxy,
-# we need to infer a ship's length if it was not reported. 
-# For this reason, we calculated the average and median
-# length for all ship types and use this value as a 
-# fallback if the length is not reported.
 #                            |------------Average
 AVGLENGTHS = {#              v     v------Median
     ShipType.NOTAVAILABLE: (47.13,31),
@@ -568,7 +570,7 @@ class TargetShipConstructor:
                 mmsi=mmsi,
                 ship_type=ship_type,
                 ship_length=self._get_ship_length(stat, mmsi,ship_type),
-                tracks=[[]]
+                tracks=[Track([])]
             )
             first = True
             for row in group.itertuples():
