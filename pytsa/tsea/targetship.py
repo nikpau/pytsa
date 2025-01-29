@@ -21,6 +21,51 @@ Longitude = float
 
 # Constants
 PI = np.pi
+class Track:
+    """
+    Object containing a ships' track,
+    and an optional interpolated version of it.
+    """
+    def __init__(self, messages: List[AISMessage]) -> None:
+        self.messages = messages
+        self._interpolation: _TrackInterpolator | None = None
+        self._interpolation_failed = False
+        
+    def __getitem__(self, index: int) -> AISMessage:
+        return self.messages[index]
+    
+    def __len__(self) -> int:
+        return len(self.messages)
+    
+    def __iter__(self) -> AISMessage:
+        return iter(self.messages)
+    
+    def interpolate_at(self, timestamp: int) -> np.ndarray:
+        """
+        Interpolate the track at the given timestamp.
+        """
+        if self._interpolation is None:
+            raise InterpolationError(
+                "Track is not interpolated. Did you call ship.interpolate()?."
+            )
+        return self._interpolation.interpolate_at(timestamp)
+    
+    def _apply_interpolation(self, mode: str) -> None:
+        """
+        Apply interpolation to the track.
+        """
+        assert mode in ["linear","spline"],\
+            "Mode must be either 'linear' or 'spline'."
+        try:
+            if mode == "spline":
+                self._interpolation = _TrackInterpolatorSpline(self.messages)
+            else:
+                self._interpolation = _TrackInterpolatorLinear(self.messages)
+        except Exception as e:
+            logger.error(
+                f"Could not interpolate track: {e}."
+            )
+            self._interpolation_failed = True
 
 
 # Exceptions
@@ -29,7 +74,19 @@ class OutofTimeBoundsError(Exception):
 class InterpolationError(Exception):
     pass
 
-class TrackSplines:
+class _TrackInterpolator:
+    def interpolate_at(self, timestamp: int) -> np.ndarray:
+        """
+        Interpolate the track at the given timestamp.
+        """
+        return np.array([
+            self.lat(timestamp),
+            self.lon(timestamp),
+            self.COG(timestamp),
+            self.SOG(timestamp)
+        ])
+
+class _TrackInterpolatorSpline(_TrackInterpolator):
     """
     Class for performing separate univariate
     spline interpolation on a given AIS track.
@@ -41,8 +98,6 @@ class TrackSplines:
         - easting: Spline interpolation of easting
         - COG: Spline interpolation of course over ground
         - SOG: Spline interpolation of speed over ground
-        - ROT: Spline interpolation of rate of turn
-        - dROT: Spline interpolation of change of rate of turn
 
         All splines are univariate splines, with time as the
         independent variable.
@@ -79,7 +134,7 @@ class TrackSplines:
             timestamps, [msg.SOG for msg in self.track]
         )
 
-class TrackLinear:
+class _TrackInterpolatorLinear(_TrackInterpolator):
     """
     Linear interpolation of a given AIS track.
     """
@@ -181,7 +236,7 @@ class TargetShip:
         self,
         ts: Union[int, None], 
         mmsi: MMSI, 
-        tracks: List[List[AISMessage]],
+        tracks: List[Track],
         ship_type: list[int] = None,
         ship_length: float = None,
         ) -> None:
@@ -198,44 +253,20 @@ class TargetShip:
         
         self.lininterp = False # Linear interpolation flag
         
-        # Indicate if the interpolation function have 
-        # been attached to the object
-        self.interpolation: list[TrackSplines] | list[TrackLinear] | None = None
-    
     def interpolate(self,mode: str) -> None:
         """
         Construct splines for the target vessel
         """
-        assert mode in ["linear","spline","auto"],\
-            "Mode must be either 'linear', 'spline' or 'auto'."
+        assert mode in ["linear","spline"],\
+            "Mode must be either 'linear', 'spline'."
         if not self.tracks:
             logger.warning(
                 f"Empty track for vessel {self.mmsi}."
             )
-            self.interpolation = None
             return
-        self.interpolation = []
         for track in self.tracks:
-            try:
-                if mode == "auto" and self.lininterp:
-                    self.interpolation.append(TrackLinear(track))
-                elif mode == "auto" and not self.lininterp:
-                        self.interpolation.append(TrackSplines(track))
-                elif mode == "linear":
-                    self.interpolation.append(TrackLinear(track))
-                elif mode == "spline":
-                    self.interpolation.append(TrackSplines(track))
-            except Exception as e:
-                logger.error(
-                    f"Could not interpolate track "
-                    f"of vessel {self.mmsi}: {e}."
-                )
-                self.tracks.remove(track)
-        if not self.interpolation: 
-            raise InterpolationError(
-                f"Could not interpolate any trajecotry "
-                f"of vessel {self.mmsi}."
-            )
+            track._apply_interpolation(mode)
+        return 
 
     def observe(self) -> np.ndarray:
         """
@@ -256,8 +287,6 @@ class TargetShip:
                 )
             logger.error(msg)
             raise NotImplementedError(msg)
-        assert self.interpolation is not None,\
-            "Interpolation has not been run. Call interpolate() first."
         # Convert query timestamp to unix time
         if isinstance(self.ts, datetime):
             ts = self.ts.timestamp()
@@ -277,14 +306,7 @@ class TargetShip:
         # at the given timestamp
         # Returns a 1x4 array:
         # [northing, easting, COG, SOG]
-        return np.array([
-            self.interpolation[i].lat(ts),
-            self.interpolation[i].lon(ts),
-            # Take the modulo 360 to ensure that the
-            # course over ground is in the interval [0,360]
-            self.interpolation[i].COG(ts) % 360,
-            self.interpolation[i].SOG(ts)
-        ])
+        return self.tracks[i].interpolate_at(ts)
 
     def observe_interval(
             self, 
@@ -342,15 +364,10 @@ class TargetShip:
             # at the given timestamps
             # Returns a Nx4 array:
             # [northing, easting, COG, SOG, timestamp]
-            preds: np.ndarray = np.array([
-                self.interpolation[i].lat(timestamps),
-                self.interpolation[i].lon(timestamps),
-                # Take the modulo 360 of the COG to get the
-                # heading to be between 0 and 360 degrees
-                self.interpolation[i].COG(timestamps) % 360,
-                self.interpolation[i].SOG(timestamps),
-                timestamps
-            ])
+            preds: np.ndarray = np.concatenate([
+                self.tracks[i].interpolate_at(timestamps),
+                timestamps.reshape(-1,1)
+            ], axis=1) 
             return preds.T
         # Start and end points of the interval
         # lie in different tracks
@@ -362,20 +379,15 @@ class TargetShip:
             # Combine the tracks into one list
             tracks = self.tracks[i:j+1]
             tracks = [msg for track in tracks for msg in track]
-            interp_ = TrackSplines(tracks) if not self.lininterp else TrackLinear(tracks)
+            interp_ = _TrackInterpolatorSpline(tracks) if not self.lininterp else _TrackInterpolatorLinear(tracks)
             # Return the observed values from the interpolation
             # at the given timestamps
             # Returns a Nx4 array:
             # [northing, easting, COG, SOG, timestamp]
-            preds: np.ndarray = np.array([
-                interp_.lat(timestamps),
-                interp_.lon(timestamps),
-                # Take the modulo 360 of the COG to get the
-                # heading to be between 0 and 360 degrees
-                interp_.COG(timestamps) % 360,
-                interp_.SOG(timestamps),
-                timestamps
-            ])
+            preds: np.ndarray = np.concatenate([
+                interp_.interpolate_at(timestamps),
+                timestamps.reshape(-1,1)
+            ], axis=1)
             return preds.T
             
     

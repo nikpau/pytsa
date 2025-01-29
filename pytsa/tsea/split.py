@@ -7,7 +7,7 @@ import time
 from itertools import pairwise
 from enum import Enum
 
-from pytsa.tsea.targetship import TargetShip
+from pytsa.tsea.targetship import TargetShip, Track
 
 from ..structs import AISMessage, LENGTH_BINS
 from .. import utils
@@ -115,14 +115,14 @@ class GuoTREX(_TREXStatCollector):
 
     def iterative_abnormal_data_detection_and_removal(
         self,
-        tracks:list[list[AISMessage]]) -> tuple[list[float], list[float]]:
+        tracks:list[Track]) -> tuple[list[float], list[float]]:
         """
         Step 3 of Guo et al.'s method.
         
         Section 4.2.2 of the paper:
         """
         track = tracks[0]
-        def average_change_rate(track:list[AISMessage]) -> list[float]:
+        def average_change_rate(track: Track) -> list[float]:
             """
             Calculate the average change rate of the track.
             """
@@ -157,7 +157,7 @@ class GuoTREX(_TREXStatCollector):
             if v_bar[i] < self.vlim or delta_c[i] < self.clim:
                 out.append(raw_tracks[0][i])
                 
-        ship.tracks = [out]
+        ship.tracks = Track([out])
 
         return
 
@@ -174,7 +174,7 @@ class ZhaoTREX(_TREXStatCollector):
         super().__init__()
         pass
         
-    def pyhsical_integrety(self, track: list[list[AISMessage]]) -> list[list[AISMessage]] | TrackRejected:
+    def pyhsical_integrety(self, track: Track) -> Track:
         """
         Check the physical integrity of the trajectory.
         
@@ -192,8 +192,8 @@ class ZhaoTREX(_TREXStatCollector):
         """
         if len(track) < 100:
             raise TrackRejected("Track too short")
-        
         return track
+
     def speed_change_too_large(self, msg_t0: AISMessage, msg_t1: AISMessage) -> bool:
         """
         Return True if the change in speed between two AIS Messages
@@ -214,7 +214,7 @@ class ZhaoTREX(_TREXStatCollector):
             return True
         return False
     
-    def spatial_logical_integrety(self, track: list[AISMessage]) -> list[AISMessage]:
+    def spatial_logical_integrety(self, track: Track) -> list[Track]:
         """
         Check the spatial logical integrity of the trajectory.
         
@@ -238,25 +238,25 @@ class ZhaoTREX(_TREXStatCollector):
         lacks completeness is marked with a note ‘outlier’).
         """
         
-        subtracks = [[track[0]]]
+        subtracks = [Track([track[0]])]
         for msg in track[1:]:
             if self.speed_change_too_large(subtracks[-1][-1],msg) \
                 or self.time_difference_too_large(subtracks[-1][-1],msg):
-                subtracks.append([msg])
+                subtracks.append(Track([msg]))
                 self._n_split_points += 1
             else:
-                subtracks[-1].append(msg)
+                subtracks[-1].messages.append(msg)
                 
         # Subtrack association
         out = [subtracks[0]]
         for i in range(len(subtracks)-1):
             if speed_from_position(out[-1][-1],subtracks[i+1][0]) <= 15:
-                out[-1].extend(subtracks[i+1])
+                out[-1].messages.extend(subtracks[i+1])
             else: out.append(subtracks[i+1])
     
         return out
 
-    def accuracy_of_time(self, track: list[AISMessage]) -> list[AISMessage]:
+    def accuracy_of_time(self, track: Track) -> list[AISMessage]:
         """
         Temporal accuracy of the trajectory.
         
@@ -289,8 +289,9 @@ class ZhaoTREX(_TREXStatCollector):
                 continue
             else:
                 out.append(msg)
-            
-        return out
+                
+        track.messages = out
+        return track
         
     def trex(self, ship: TargetShip) -> None:
         """
@@ -355,14 +356,14 @@ class PauligTREX(_TREXStatCollector):
             f"Processing target ship {ship.mmsi} "
         )
         for track in ship.tracks:
-            track.sort(key=lambda x: x.timestamp)
-            _itracks = [[ship.tracks[0][0]]] # Intermediary track
+            track.messages.sort(key=lambda x: x.timestamp)
+            _itracks = [Track([ship.tracks[0][0]])] # Intermediary track
             for msg_t0,msg_t1 in pairwise(track):
                 if self.is_split_point(msg_t0,msg_t1,ship.ship_length):
-                    _itracks.append([msg_t1])
+                    _itracks.append(Track([msg_t1]))
                     self._n_split_points += 1
                 else:    
-                    _itracks[-1].append(msg_t1)
+                    _itracks[-1].messages.append(msg_t1)
         # Recombine tracks
         tracks = [track for track in _itracks if len(track) > 1]
 
@@ -399,13 +400,13 @@ class PauligTREX(_TREXStatCollector):
         the same metrics. If they are close enough, we merge 
         the two tracks back into one.
         """
-        rejoined = []
+        rejoined: list[Track] = []
         for i, track in enumerate(target.tracks):
             if i == 0:
                 rejoined.append(track)
                 continue
             if not self.is_split_point(rejoined[-1][-1],track[0],target.ship_length):
-                rejoined[-1].extend(track)
+                rejoined[-1].messages.extend(track)
                 self._n_rejoined_tracks += 1
             else:
                 rejoined.append(track)

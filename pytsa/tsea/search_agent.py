@@ -580,12 +580,12 @@ class TargetShipConstructor:
                     second=row.second
                 )
                 if first:
-                    tv.tracks[-1].append(msg)
+                    tv.tracks[-1].messages.append(msg)
                     first = False
                 else:
                     if msg.timestamp == tv.tracks[-1][-1].timestamp:
                         continue
-                    tv.tracks[-1].append(msg)
+                    tv.tracks[-1].messages.append(msg)
 
             targets[mmsi] = tv
         return resqueue.put(targets)
@@ -674,7 +674,7 @@ class TargetShipConstructor:
                 [msg.timestamp for msg in rmpos],
                 return_index=True)[1]
             self._n_duplicates += len(rmpos) - len(ts_sorted_idx)
-            tgt.tracks[0] = [rmpos[i] for i in ts_sorted_idx]
+            tgt.tracks[0] = Track([rmpos[i] for i in ts_sorted_idx])
             
         return targets
     
@@ -694,8 +694,8 @@ class TargetShipConstructor:
                 if mmsi not in targets:
                     targets[mmsi] = tgt
                 else:
-                    targets[mmsi].tracks[0].extend(
-                        tgt.tracks[0]
+                    targets[mmsi].tracks[0].messages.extend(
+                        tgt.tracks[0].messages
                     )
         return targets
     
@@ -751,15 +751,15 @@ class TargetShipConstructor:
                     mmsi=mmsi,
                     ship_type = ship_type,
                     ship_length = ship_length,
-                    tracks=[[msg]]
+                    tracks = [Track([msg])]
                 )
             else:
                 # Split track
                 if self.splitter.is_split_point(
                     targets[mmsi].tracks[-1][-1],msg,targets[mmsi].ship_length):
-                    targets[mmsi].tracks.append([])
+                    targets[mmsi].tracks.append(Track([]))
                 v = targets[mmsi]
-                v.tracks[-1].append(msg)
+                v.tracks[-1].messages.append(msg)
 
         for tgt in targets.values():
             tgt.find_shell() # Find shell (start/end of traj) of target ship
