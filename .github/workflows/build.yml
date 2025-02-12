@@ -94,14 +94,23 @@ jobs:
         id-token: write  # IMPORTANT: mandatory for trusted publishing
 
       steps:
+        # Since upload-artifact@v4 now forces to use multiple folders
+        # to collect artifacts, we need to merge them into a single folder
+        # see actions/upload-artifacts#480
+        - name: Merge wheels files into a single folder
+          run: |
+            mkdir -p target/merged_wheels
+                for d in target/wheels/*/; do
+                  cp -R "$d"/* target/merged_wheels/
+                done
         - name: Download all the dists
           uses: actions/download-artifact@v4
           with:
-            path: target/wheels/
+            path: target/merged_wheels/
         - name: Publish distribution to PyPI
           uses: pypa/gh-action-pypi-publish@release/v1
           with:
-            packages-dir: target/wheels/
+            packages-dir: target/merged_wheels/
           
     github-release:
       name: >-
@@ -119,7 +128,7 @@ jobs:
       - name: Download all the dists
         uses: actions/download-artifact@v4
         with:
-          path: target/wheels/
+          path: target/merged_wheels/
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -132,9 +141,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         # Upload to GitHub Release using the `gh` CLI.
-        # `target/wheels/` contains the built packages, and the
-        # sigstore-produced signatures and certificates.
+        # `target/merged_wheels/` contains the built packages.
         run: >-
           gh release upload
-          '${{ github.ref_name }}' target/wheels/**
+          '${{ github.ref_name }}' target/merged_wheels/**
           --repo '${{ github.repository }}'
