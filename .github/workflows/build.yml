@@ -94,22 +94,22 @@ jobs:
         id-token: write  # IMPORTANT: mandatory for trusted publishing
 
       steps:
+        - name: Download all the dists
+          uses: actions/download-artifact@v4
+          with:
+            path: target/wheels/
         # Since upload-artifact@v4 now forces to use multiple folders
         # to collect artifacts, we need to merge them into a single folder
         # see actions/upload-artifact#480
         - name: List all the wheels
           run: |
-            ls -R target/wheels/
+            ls -R target/wheels*/
         - name: Merge wheels files into a single folder
           run: |
             mkdir -p target/merged_wheels
             for d in target/wheels/*/; do
               cp -R "$d"/* target/merged_wheels/
             done
-        - name: Download all the dists
-          uses: actions/download-artifact@v4
-          with:
-            path: target/merged_wheels/
         - name: Publish distribution to PyPI
           uses: pypa/gh-action-pypi-publish@release/v1
           with:
