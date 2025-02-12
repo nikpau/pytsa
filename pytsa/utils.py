@@ -439,20 +439,35 @@ class DataLoader:
         logger.debug("Reading file in parallel...") 
         for p in processes:
             p.start()
-            
-        # Collect the data into shared memory
-        start_index = 0
-        for entry in range(njobs):
-            logger.debug(f"Collecting chunk {entry+1}/{njobs}")
-            df_chunk: pd.DataFrame = queue.get()
-            end_index = start_index + df_chunk.size
-            np_array_chunk = df_chunk.to_numpy()
-            shared[start_index:end_index] = np_array_chunk.flatten()
-            start_index = end_index 
-            logger.debug(f"End index at {end_index/(nrows*ncolumns)*100:.1f}%.")
 
+            # Collect chunks back from the queue
+        chunk_list = []
+        total_rows = 0
+        for _ in range(njobs):
+            df_chunk = queue.get()  # blocks until a chunk is available
+            chunk_list.append(df_chunk)
+            total_rows += df_chunk.shape[0]
+        
+        # At this point, we know how many rows were actually returned in total.
+        # Now we can create the shared array with the *exact* size needed.
+        shared = mp.Array("d", total_rows * ncolumns)
+
+        # Place each chunk's data into the shared array
+        start_index = 0
+        for df_chunk in chunk_list:
+            arr_chunk = df_chunk.to_numpy().ravel()
+            end_index = start_index + arr_chunk.size
+            shared[start_index:end_index] = arr_chunk
+            start_index = end_index
+
+        # Optionally, join the processes before returning
+        for p in processes:
+            p.join()
+
+        # Return the array and the actual shape used
         logger.debug("File contents placed in shared memory.")
-        return shared, (nrows, ncolumns), rows_to_read
+        return shared, (total_rows, ncolumns), rows_to_read
+            
     
     def from_raw(self, raw_dyn: Path, raw_stat: Path) -> tuple[pd.DataFrame,pd.DataFrame]:
         """
