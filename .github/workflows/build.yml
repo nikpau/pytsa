@@ -95,7 +95,7 @@ jobs:
 
       steps:
         - name: Download all the dists
-          uses: actions/download-artifact@v3
+          uses: actions/download-artifact@v4
           with:
             name: wheels
             path: target/wheels/
@@ -118,7 +118,7 @@ jobs:
 
       steps:
       - name: Download all the dists
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: wheels
           path: target/wheels/
