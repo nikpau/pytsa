@@ -54,10 +54,17 @@ class Track:
         """
         Apply interpolation to the track.
         """
-        assert mode in ["linear","spline"],\
-            "Mode must be either 'linear' or 'spline'."
+        assert mode in ["linear","spline","auto"],\
+            "Mode must be either 'auto', 'linear' or 'spline'."
+        
         try:
-            if mode == "spline":
+            if mode == "auto":
+                self._interpolation = (
+                    _TrackInterpolatorSpline(self.messages)
+                    if len(self) > 3 # Need at least 4 points for spline
+                    else _TrackInterpolatorLinear(self.messages)
+                )
+            elif mode == "spline":
                 self._interpolation = _TrackInterpolatorSpline(self.messages)
             else:
                 self._interpolation = _TrackInterpolatorLinear(self.messages)
@@ -257,8 +264,8 @@ class TargetShip:
         """
         Construct splines for the target vessel
         """
-        assert mode in ["linear","spline"],\
-            "Mode must be either 'linear', 'spline'."
+        assert mode in ["linear","spline","auto"],\
+            "Mode must be either 'auto', 'linear', 'spline'."
         if not self.tracks:
             logger.warning(
                 f"Empty track for vessel {self.mmsi}."
