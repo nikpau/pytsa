@@ -338,7 +338,7 @@ If you encounter any issues or have any suggestions for improvements, you are in
 If you use this module in your research, please consider citing this repository as follows:
 
 ```
-@misc{pytsa2024,
+@misc{pytsa2026,
   author = {Paulig, Niklas},
   title = {{PyTSA}: Python Trajectory Splitting and Assessment Agent for AIS Data},
   year = {2024},
