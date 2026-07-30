@@ -1,7 +1,5 @@
 # Python Trajectory Search Agent (PyTSA) for raw AIS records
 
-# WARNING: Please use Version 2.3.13 for now, as 2.3.15 has a bug in the trajectory splitter rendering it non-functional
-
 ### Accompanying implementation of our _Ocean Engineering_ publication: [An open-source framework for data-driven trajectory extraction from AIS data — The α-method](https://doi.org/10.1016/j.oceaneng.2024.119092)
 
 This module provides a set of functionalities around Automatic Identification System (AIS) messages, such as
