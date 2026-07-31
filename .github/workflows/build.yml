@@ -59,6 +59,11 @@ jobs:
       steps:
         - uses: actions/checkout@v4
 
+        # Install gettext for macOS to avoid pyton3.10 init error
+        - name: Install macOS dependendcies
+          if: runner.os == 'macOS'
+          run: brew install gettext
+
         - name: Set up Python
           uses: actions/setup-python@v5
           with:
