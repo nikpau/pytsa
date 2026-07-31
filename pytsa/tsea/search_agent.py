@@ -406,8 +406,8 @@ class SearchAgent:
         targets = constructor._mp_construct_target_vessels(
             njobs,skip_tsplit
         )
-        constructor.print_trex_stats(self._selected_splitter.value(**skwargs))
-        split.print_split_stats(self._selected_splitter.value(**skwargs))
+        constructor.print_trex_stats(constructor.splitter)
+        split.print_split_stats(constructor.splitter)
         
         # Reset data loader since the generators
         # are exhausted.

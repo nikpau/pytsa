@@ -333,15 +333,18 @@ class DataLoader:
             The processed DataFrame is put into the queue.
         """
         df = pd.read_csv(
-            fp, skiprows=start_row, nrows=rows_to_load,usecols=col_idxs, sep = ",")
+            fp, skiprows=start_row, 
+            nrows=rows_to_load,usecols=col_idxs, 
+            sep = ",", header=None)
         # Convert timestamp col to unix timestamp
         dates = pd.to_datetime(df.iloc[:,timestamp_col])
         # Get timezones
         if dates.dt.tz is None:
             dates = dates.dt.tz_localize('UTC')
-        df.iloc[:,timestamp_col] = (
-            dates - pd.Timestamp("1970-01-01",tzinfo=dates.dt.tz)
-        ) // pd.Timedelta("1s")
+        # Get the actual column name at that position
+        col_name = df.columns[timestamp_col]
+        # Convert datetime series directly to Unix timestamp in seconds
+        df[col_name] = dates.astype(int) // 10**9
         # Since we only use a subset of the columns, `df` orders
         # its columns according to the order of `col_idxs`. We need
         # to reorder the columns to match the original order of `column_names`.
