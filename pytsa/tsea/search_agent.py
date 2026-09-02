@@ -7,6 +7,7 @@ import multiprocessing as mp
 
 from copy import copy
 from pathlib import Path
+from types import GeneratorType
 try:
     from warnings import deprecated
 except ImportError:
@@ -308,7 +309,7 @@ class SearchAgent:
             case list() as lst:
                 # List of strings or Paths
                 return [Path(item) if isinstance(item, str) else item for item in lst]
-            case Generator():
+            case _ if isinstance(input_paths, GeneratorType):
                 # Generator of strings or Paths
                 return [Path(item) if isinstance(item, str) else item for item in input_paths]
             case _:

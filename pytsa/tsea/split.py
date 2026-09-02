@@ -339,9 +339,9 @@ class PauligTREX(_TREXStatCollector):
         self._split_points = []
 
         # Cutoff values for the quantiles
-        self.ST = 1 - alpha
-        self.DTL = alpha / 2
-        self.DTU = 1 - self.DTL
+        self.ST = round(1 - alpha, 3) # avoid floating point issues
+        self.DTL = round(alpha / 2, 3)
+        self.DTU = round(1 - self.DTL, 3)
 
         
     def __len__(self) -> int:
